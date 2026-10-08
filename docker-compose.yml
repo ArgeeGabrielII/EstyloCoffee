@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: estylo
+      POSTGRES_DB: estylo_coffee
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U estylo -d estylo_coffee"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  api:
+    build: {context: ., dockerfile: apps/api/Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://estylo:${POSTGRES_PASSWORD}@db:5432/estylo_coffee
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PORT: 3000
+    depends_on:
+      db: {condition: service_healthy}
+    command: [sh, -c, "npx prisma migrate deploy && node prisma/seed.mjs && node dist/main.js"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+  web:
+    build: {context: ., dockerfile: apps/web/Dockerfile}
+    ports: ["8080:80"]
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  postgres-data:

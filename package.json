@@ -1,0 +1,25 @@
+{
+  "name": "estylo-coffee-tracker",
+  "private": true,
+  "version": "2.0.0",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm -w apps/api run start:dev",
+    "dev:web": "npm -w apps/web run dev",
+    "build": "npm -w apps/api run build && npm -w apps/web run build",
+    "test": "npm -w apps/api run test",
+    "db:generate": "npm -w apps/api run prisma:generate",
+    "db:deploy": "npm -w apps/api run prisma:deploy",
+    "db:seed": "npm -w apps/api run prisma:seed",
+    "lint": "npm -w apps/api run lint && npm -w apps/web run lint",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\"",
+    "test:responsive": "node tests/responsive.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "prettier": "^3.9.9"
+  }
+}

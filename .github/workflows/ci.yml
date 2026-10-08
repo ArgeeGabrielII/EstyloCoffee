@@ -1,0 +1,36 @@
+name: Validate coffee tracker
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: estylo
+          POSTGRES_PASSWORD: ci_database_password
+          POSTGRES_DB: estylo_coffee_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U estylo -d estylo_coffee_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://estylo:ci_database_password@localhost:5432/estylo_coffee_test
+      JWT_SECRET: ci_only_secret_32_characters_minimum
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ci_only_admin_password
+      APP_ORIGIN: http://localhost:8080
+      COOKIE_SECURE: 'false'
+      INTEGRATION_TEST_DATABASE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm run db:seed
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      - run: node tests/integration.cjs

@@ -1,0 +1,50 @@
+[
+  {
+    "viewport": "375x667",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "390x844",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "768x1024",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "820x1180",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "1024x1366",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  },
+  {
+    "viewport": "1180x820",
+    "login": "pass",
+    "cart": "pass",
+    "SMS_order": "pass",
+    "orders": "pass",
+    "horizontalOverflow": false
+  }
+]

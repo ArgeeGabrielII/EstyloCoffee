@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CASHIER
+}
+
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum Fulfillment {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderSource {
+  WALK_IN
+  SMS
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+model User {
+  id           String     @id @default(uuid())
+  username     String     @unique
+  displayName  String
+  passwordHash String
+  role         UserRole
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  orders       Order[]
+  auditLogs    AuditLog[]
+}
+
+model Product {
+  id            String      @id @default(uuid())
+  name          String      @unique
+  priceCentavos Int?
+  active        Boolean     @default(true)
+  items         OrderItem[]
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  requestKey    String        @unique
+  customer      String
+  phone         String        @default("")
+  address       String        @default("")
+  fulfillment   Fulfillment
+  source        OrderSource
+  status        OrderStatus   @default(NEW)
+  payment       PaymentStatus @default(UNPAID)
+  totalCentavos Int
+  createdAt     DateTime      @default(now())
+  createdBy     String
+  user          User          @relation(fields: [createdBy], references: [id])
+  items         OrderItem[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id                String           @id @default(uuid())
+  orderId           String
+  order             Order            @relation(fields: [orderId], references: [id])
+  productId         String
+  product           Product          @relation(fields: [productId], references: [id])
+  name              String
+  quantity          Int
+  unitPriceCentavos Int
+  addons            OrderItemAddon[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  event     String
+  entityId  String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Addon {
+  id            String           @id @default(uuid())
+  name          String           @unique
+  priceCentavos Int
+  active        Boolean          @default(true)
+  snapshots     OrderItemAddon[]
+}
+
+model OrderItemAddon {
+  id                String    @id @default(uuid())
+  orderItemId       String
+  orderItem         OrderItem @relation(fields: [orderItemId], references: [id])
+  addonId           String
+  addon             Addon     @relation(fields: [addonId], references: [id])
+  name              String
+  quantity          Int
+  unitPriceCentavos Int
+}
