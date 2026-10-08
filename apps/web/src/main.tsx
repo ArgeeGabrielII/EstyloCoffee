@@ -1,3 +1,4 @@
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
@@ -6,6 +7,7 @@ import {
   Route,
   Routes,
 } from "react-router-dom";
+
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "./styles.css";
@@ -13,10 +15,12 @@ import "./styles.css";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AppLayout } from "./components/AppLayout";
+
 import { LoginPage } from "./pages/LoginPage";
 import { CashierPage } from "./pages/CashierPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { PublicQueuePage } from "./pages/PublicQueuePage";
+import { OnsiteOrderPage } from "./pages/OnsiteOrderPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -39,7 +43,11 @@ function Home() {
   );
 }
 
-function Admin({ children }: { children: React.ReactNode }) {
+function Admin({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <ProtectedRoute roles={["ADMIN"]}>
       {children}
@@ -47,17 +55,35 @@ function Admin({ children }: { children: React.ReactNode }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(
+  document.getElementById("root")!
+).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/queue" element={<PublicQueuePage />} />
+          {/* Public pages: login not required */}
+          <Route
+            path="/login"
+            element={<LoginPage />}
+          />
 
           <Route
+            path="/queue"
+            element={<PublicQueuePage />}
+          />
+
+          <Route
+            path="/onsite"
+            element={<OnsiteOrderPage />}
+          />
+
+          {/* Authenticated management pages */}
+          <Route
             element={
-              <ProtectedRoute roles={["ADMIN", "CASHIER"]}>
+              <ProtectedRoute
+                roles={["ADMIN", "CASHIER"]}
+              >
                 <AppLayout />
               </ProtectedRoute>
             }
@@ -71,7 +97,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               }
             />
 
-            <Route path="/orders" element={<OrdersPage />} />
+            <Route
+              path="/orders"
+              element={<OrdersPage />}
+            />
 
             <Route
               path="/reports"
@@ -110,18 +139,24 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             />
           </Route>
 
+          {/* Authenticated cashier workspace */}
           <Route
             path="/cashier"
             element={
-              <ProtectedRoute roles={["ADMIN", "CASHIER"]}>
+              <ProtectedRoute
+                roles={["ADMIN", "CASHIER"]}
+              >
                 <CashierPage />
               </ProtectedRoute>
             }
           />
 
-          <Route path="*" element={<Home />} />
+          <Route
+            path="*"
+            element={<Home />}
+          />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
-  </React.StrictMode>,
+  </React.StrictMode>
 );

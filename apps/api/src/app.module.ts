@@ -6,16 +6,23 @@ import { CoffeeController } from "./coffee.controller";
 import { CoffeeService } from "./coffee.service";
 import { HealthController } from "./health.controller";
 import { QueueController } from "./queue.controller";
+import { OnsiteController } from "./onsite.controller";
 import { CupsReportController } from "./cups-report.controller";
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+  ],
   controllers: [
     CoffeeController,
     HealthController,
     QueueController,
+    OnsiteController,
     CupsReportController,
   ],
-  providers: [CoffeeService],
+  providers: [
+    CoffeeService,
+  ],
 })
 export class AppModule {}
