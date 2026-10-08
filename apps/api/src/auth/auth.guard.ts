@@ -1,3 +1,4 @@
+
 import {
   CanActivate,
   ExecutionContext,
@@ -5,6 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -13,25 +15,47 @@ export class AuthGuard implements CanActivate {
     private jwt: JwtService,
     private prisma: PrismaService,
   ) {}
+
   async canActivate(ctx: ExecutionContext) {
     const request = ctx.switchToHttp().getRequest();
     const token = request.cookies?.estylo_token;
-    if (!token) throw new UnauthorizedException("Authentication required");
+
+    if (!token) {
+      throw new UnauthorizedException(
+        "Authentication required"
+      );
+    }
+
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+      }>(token);
+
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
-      if (!user?.active) throw new UnauthorizedException("Account inactive");
+
+      if (
+        !user?.active ||
+        user.role === UserRole.GUEST
+      ) {
+        throw new UnauthorizedException(
+          "Account not authorized"
+        );
+      }
+
       request.user = {
         id: user.id,
         username: user.username,
         displayName: user.displayName,
         role: user.role,
       };
+
       return true;
     } catch {
-      throw new UnauthorizedException("Invalid or expired session");
+      throw new UnauthorizedException(
+        "Invalid or expired session"
+      );
     }
   }
 }

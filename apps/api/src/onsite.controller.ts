@@ -282,15 +282,28 @@ export class OnsiteController {
       );
     }
 
+    
     const actor = await this.prisma.user.findUnique({
-      where: {
+    where: {
         id: actorId,
-      },
-      select: {
+    },
+    select: {
         id: true,
         active: true,
-      },
+        role: true,
+    },
     });
+
+    if (
+    !actor ||
+    !actor.active ||
+    actor.role !== "GUEST"
+    ) {
+    throw new ServiceUnavailableException(
+        "Onsite ordering requires an active GUEST account"
+    );
+    }
+
 
     if (!actor?.active) {
       throw new ServiceUnavailableException(
