@@ -4,6 +4,12 @@ import { api, money } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { Product, Addon } from "../types";
 
+type CartLine = {
+  id: string;
+  productId: string;
+  addons: Record<string, number>;
+};
+
 function key() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) =>
     x.toString(16).padStart(2, "0"),
@@ -15,10 +21,7 @@ export function CashierPage() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
-  const [selections, setSelections] = useState<
-    Record<string, Record<string, number>>
-  >({});
-  const [cart, setCart] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [customer, setCustomer] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -27,55 +30,83 @@ export function CashierPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+
   const requestKey = useRef("");
 
   useEffect(() => {
-    api<Addon[]>("/addons")
-      .then(setAddons)
-      .catch((e) => setError(e.message));
-
-    api<Product[]>("/products")
-      .then(setProducts)
+    Promise.all([
+      api<Product[]>("/products"),
+      api<Addon[]>("/addons"),
+    ])
+      .then(([drinks, extras]) => {
+        setProducts(drinks);
+        setAddons(extras);
+      })
       .catch((e) => setError(e.message));
   }, []);
-
-  const lines = products.filter((p) => cart[p.id]);
-
-  const total = lines.reduce(
-    (s, p) =>
-      s +
-      ((p.priceCentavos || 0) +
-        addons.reduce(
-          (sum, a) =>
-            sum + a.priceCentavos * (selections[p.id]?.[a.id] || 0),
-          0,
-        )) *
-        cart[p.id],
-    0,
-  );
 
   function changed() {
     requestKey.current = "";
     setSuccess("");
   }
 
-  function quantity(id: string, d: number) {
-    if (d < 0 && cart[id] === 1) {
-      setSelections((old) => {
-        const next = { ...old };
-        delete next[id];
-        return next;
-      });
+  function lineTotal(line: CartLine) {
+    const product = products.find((p) => p.id === line.productId);
+    return (
+      (product?.priceCentavos || 0) +
+      addons.reduce(
+        (sum, addon) =>
+          sum + addon.priceCentavos * (line.addons[addon.id] || 0),
+        0,
+      )
+    );
+  }
+
+  const total = cart.reduce((sum, line) => sum + lineTotal(line), 0);
+
+  function addCup(productId: string) {
+    if (busy) return;
+
+    if (cart.length >= 50) {
+      setError("Maximum 50 cups per order.");
+      return;
     }
 
     changed();
+    setError("");
+    setCart((old) => [
+      ...old,
+      { id: key(), productId, addons: {} },
+    ]);
+  }
 
-    setCart((old) => {
-      const next = { ...old };
-      next[id] = Math.max(0, Math.min(99, (next[id] || 0) + d));
-      if (!next[id]) delete next[id];
-      return next;
-    });
+  function removeCup(lineId: string) {
+    changed();
+    setCart((old) => old.filter((line) => line.id !== lineId));
+  }
+
+  function updateAddon(
+    lineId: string,
+    addonId: string,
+    value: string,
+  ) {
+    const quantity = Math.min(
+      99,
+      Math.max(0, Math.floor(Number(value) || 0)),
+    );
+
+    changed();
+
+    setCart((old) =>
+      old.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              addons: { ...line.addons, [addonId]: quantity },
+            }
+          : line,
+      ),
+    );
   }
 
   async function submit(e: FormEvent) {
@@ -83,8 +114,8 @@ export function CashierPage() {
 
     if (busy) return;
 
-    if (!lines.length) {
-      setError("Select at least one drink");
+    if (!cart.length) {
+      setError("Select at least one drink.");
       return;
     }
 
@@ -102,19 +133,21 @@ export function CashierPage() {
           address,
           fulfillment,
           source,
-          items: lines.map((p) => ({
-            productId: p.id,
-            quantity: cart[p.id],
-            addons: Object.entries(selections[p.id] || {})
-              .filter(([, n]) => n > 0)
-              .map(([addonId, quantity]) => ({ addonId, quantity })),
+          items: cart.map((line) => ({
+            productId: line.productId,
+            quantity: 1,
+            addons: Object.entries(line.addons)
+              .filter(([, quantity]) => quantity > 0)
+              .map(([addonId, quantity]) => ({
+                addonId,
+                quantity,
+              })),
           })),
         }),
       });
 
       setSuccess(result.id);
-      setCart({});
-      setSelections({});
+      setCart([]);
       setCustomer("");
       setPhone("");
       setAddress("");
@@ -175,16 +208,18 @@ export function CashierPage() {
         <section className="pos-left">
           <div className="section-label">COFFEE MENU</div>
           <h2 className="mb-4">Make someone's day.</h2>
+          <p>Tap a drink to add one separately customizable cup.</p>
 
           <div className="product-grid">
             {products
               .filter((p) => p.active)
               .map((p) => (
                 <button
+                  type="button"
                   disabled={busy || !p.priceCentavos}
                   className="tile"
                   key={p.id}
-                  onClick={() => quantity(p.id, 1)}
+                  onClick={() => addCup(p.id)}
                 >
                   <strong>{p.name}</strong>
                   <span>
@@ -196,7 +231,7 @@ export function CashierPage() {
               ))}
           </div>
 
-          {!products.length && (
+          {!products.some((p) => p.active) && (
             <p className="empty">No menu available.</p>
           )}
         </section>
@@ -209,97 +244,76 @@ export function CashierPage() {
           <h4>Current order</h4>
 
           <div className="sale-lines">
-            {lines.length ? (
-              lines.map((p) => (
-                <div key={p.id}>
-                  <div className="sale-line">
-                    <div>
-                      {p.name}
-                      <small>
-                        {money(p.priceCentavos || 0)} each
-                      </small>
-                    </div>
+            {!cart.length ? (
+              <p className="empty">Select drinks to begin.</p>
+            ) : (
+              cart.map((line, index) => {
+                const product = products.find(
+                  (p) => p.id === line.productId,
+                );
 
-                    <div className="line-actions">
-                      <button
-                        type="button"
-                        className="qty-btn"
-                        disabled={busy}
-                        aria-label={"Remove one " + p.name}
-                        onClick={() => quantity(p.id, -1)}
-                      >
-                        −
-                      </button>
-
-                      {cart[p.id]}
+                return (
+                  <div key={line.id} className="mb-3 pb-3 border-bottom">
+                    <div className="sale-line">
+                      <div>
+                        <strong>
+                          Cup {index + 1} — {product?.name}
+                        </strong>
+                        <small>
+                          Base price: {money(product?.priceCentavos || 0)}
+                        </small>
+                      </div>
 
                       <button
                         type="button"
-                        className="qty-btn"
+                        className="btn btn-sm btn-outline-danger"
                         disabled={busy}
-                        aria-label={"Add one " + p.name}
-                        onClick={() => quantity(p.id, 1)}
+                        aria-label={`Remove cup ${index + 1}`}
+                        onClick={() => removeCup(line.id)}
                       >
-                        +
+                        Remove
                       </button>
                     </div>
-                  </div>
 
-                  <div className="mb-3">
-                    <small>
-                      Add-ons per cup (applies to all {cart[p.id]} cups)
-                    </small>
+                    <small>Add-ons for this cup only</small>
 
                     {addons
                       .filter((a) => a.active)
-                      .map((a) => (
+                      .map((addon) => (
                         <label
-                          key={a.id}
+                          key={addon.id}
                           className="d-flex justify-content-between align-items-center gap-2 mt-2"
                         >
-                          {a.name} ({money(a.priceCentavos)})
-
+                          <span>
+                            {addon.name} ({money(addon.priceCentavos)})
+                          </span>
                           <input
                             style={{ width: 80 }}
-                            aria-label={
-                              p.name +
-                              " " +
-                              a.name +
-                              " quantity per cup"
-                            }
+                            aria-label={`Cup ${index + 1} ${addon.name} quantity`}
                             className="form-control"
                             type="number"
                             min="0"
                             max="99"
                             step="1"
                             disabled={busy}
-                            value={selections[p.id]?.[a.id] || 0}
-                            onChange={(e) => {
-                              changed();
-                              setSelections((old) => ({
-                                ...old,
-                                [p.id]: {
-                                  ...old[p.id],
-                                  [a.id]: Math.min(
-                                    99,
-                                    Math.max(
-                                      0,
-                                      Math.floor(
-                                        Number(e.target.value) || 0,
-                                      ),
-                                    ),
-                                  ),
-                                },
-                              }));
-                            }}
+                            value={line.addons[addon.id] || 0}
+                            onChange={(e) =>
+                              updateAddon(
+                                line.id,
+                                addon.id,
+                                e.target.value,
+                              )
+                            }
                           />
                         </label>
                       ))}
+
+                    <strong className="d-block mt-2">
+                      Cup total: {money(lineTotal(line))}
+                    </strong>
                   </div>
-                </div>
-              ))
-            ) : (
-              <p className="empty">Select drinks to begin.</p>
+                );
+              })
             )}
           </div>
 
@@ -311,10 +325,7 @@ export function CashierPage() {
               </div>
             </div>
 
-            <label
-              className="form-label mt-3"
-              htmlFor="customer"
-            >
+            <label className="form-label mt-3" htmlFor="customer">
               Customer
             </label>
             <input
@@ -334,9 +345,7 @@ export function CashierPage() {
               type="tel"
               className="form-control"
               maxLength={30}
-              required={
-                source === "SMS" || fulfillment === "DELIVERY"
-              }
+              required={source === "SMS" || fulfillment === "DELIVERY"}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
@@ -387,7 +396,7 @@ export function CashierPage() {
 
             <button
               className="btn btn-estylo complete-btn w-100"
-              disabled={busy || !lines.length}
+              disabled={busy || !cart.length}
             >
               {busy ? "CREATING…" : "CREATE ORDER"}
             </button>
@@ -397,8 +406,7 @@ export function CashierPage() {
               className="btn btn-outline-light clear-btn w-100"
               disabled={busy}
               onClick={() => {
-                setCart({});
-                setSelections({});
+                setCart([]);
                 changed();
               }}
             >
