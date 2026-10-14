@@ -1,3 +1,4 @@
+
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { Product, Addon } from "../types";
@@ -13,7 +14,9 @@ function MaintenanceRow({
 }) {
   const [name, setName] = useState(row.name);
   const [price, setPrice] = useState(
-    row.priceCentavos == null ? "" : String(row.priceCentavos / 100),
+    row.priceCentavos == null
+      ? ""
+      : String(row.priceCentavos / 100),
   );
   const [active, setActive] = useState(row.active);
   const [busy, setBusy] = useState(false);
@@ -27,10 +30,12 @@ function MaintenanceRow({
       if (
         !name.trim() ||
         (price !== "" &&
-          (!Number.isFinite(Number(price)) || Number(price) <= 0)) ||
+          (!Number.isFinite(Number(price)) ||
+            Number(price) <= 0 ||
+            Number(price) > 10000)) ||
         (kind === "addons" && price === "")
       ) {
-        throw Error("Name and positive price required");
+        throw Error("Name and valid price required");
       }
 
       await api("/" + kind + "/" + row.id, {
@@ -38,14 +43,18 @@ function MaintenanceRow({
         body: JSON.stringify({
           name: name.trim(),
           priceCentavos:
-            price === "" ? null : Math.round(Number(price) * 100),
+            price === ""
+              ? null
+              : Math.round(Number(price) * 100),
           active,
         }),
       });
 
       await onSave();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(
+        e instanceof Error ? e.message : "Save failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -83,11 +92,12 @@ function MaintenanceRow({
       </td>
       <td>
         <button
+          type="button"
           className="btn btn-estylo"
           disabled={busy}
           onClick={save}
         >
-          Save
+          {busy ? "Saving..." : "Save"}
         </button>
         {error && (
           <div role="alert" className="text-danger">
@@ -104,7 +114,9 @@ export function ProductsPage() {
   const [drinks, setDrinks] = useState<Product[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [newActive, setNewActive] = useState(true);
 
   async function load() {
     const [p, a] = await Promise.all([
@@ -117,7 +129,13 @@ export function ProductsPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) =>
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to load menu",
+      ),
+    );
   }, []);
 
   async function create(e: FormEvent<HTMLFormElement>) {
@@ -126,23 +144,58 @@ export function ProductsPage() {
     const form = e.currentTarget;
     const d = Object.fromEntries(new FormData(form));
 
-    setBusy(true);
+    const name = String(d.name ?? "").trim();
+    const price = Number(d.price);
+    const isDrink = tab === "products";
+
     setError("");
+    setSuccess("");
+
+    if (!name || name.length > 100) {
+      setError("Please enter a valid name.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      price > 10000 ||
+      !Number.isInteger(Math.round(price * 100))
+    ) {
+      setError(
+        "Enter a valid price between ₱0.01 and ₱10,000.",
+      );
+      return;
+    }
+
+    setBusy(true);
 
     try {
-      await api("/addons", {
+      await api(isDrink ? "/products" : "/addons", {
         method: "POST",
         body: JSON.stringify({
-          name: d.name,
-          priceCentavos: Math.round(Number(d.price) * 100),
-          active: true,
+          name,
+          priceCentavos: Math.round(price * 100),
+          active: isDrink ? newActive : true,
         }),
       });
 
-      form.reset();
       await load();
+
+      form.reset();
+      setNewActive(true);
+
+      setSuccess(
+        isDrink
+          ? `Drink "${name}" added successfully.`
+          : `Add-on "${name}" added successfully.`,
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to add item",
+      );
     } finally {
       setBusy(false);
     }
@@ -155,7 +208,10 @@ export function ProductsPage() {
       <div className="page-title">
         <div>
           <h1>Menu maintenance</h1>
-          <p>Saved orders retain their original drink and add-on prices.</p>
+          <p>
+            Saved orders retain their original drink
+            and add-on prices.
+          </p>
         </div>
       </div>
 
@@ -170,15 +226,20 @@ export function ProductsPage() {
         ].map(([key, label]) => (
           <button
             key={key}
+            type="button"
             role="tab"
             aria-selected={tab === key}
             className={
               "btn " +
-              (tab === key ? "btn-estylo" : "btn-outline-secondary")
+              (tab === key
+                ? "btn-estylo"
+                : "btn-outline-secondary")
             }
             onClick={() => {
               setTab(key);
               setError("");
+              setSuccess("");
+              setNewActive(true);
             }}
           >
             {label}
@@ -187,16 +248,36 @@ export function ProductsPage() {
       </div>
 
       {error && (
-        <div role="alert" className="alert alert-danger">
+        <div
+          role="alert"
+          className="alert alert-danger"
+        >
           {error}
         </div>
       )}
 
-      {tab === "addons" && (
-        <form
-          className="card-estylo mb-4 d-flex gap-3 flex-wrap align-items-end"
-          onSubmit={create}
+      {success && (
+        <div
+          role="status"
+          className="alert alert-success"
         >
+          {success}
+        </div>
+      )}
+
+      {/* Create Drink / Add-on */}
+      <form
+        key={tab}
+        className="card-estylo mb-4"
+        onSubmit={create}
+      >
+        <h2 className="h5 mb-3">
+          {tab === "products"
+            ? "Add New Drink"
+            : "Add New Add-On"}
+        </h2>
+
+        <div className="d-flex gap-3 flex-wrap align-items-end">
           <label>
             Name
             <input
@@ -204,7 +285,11 @@ export function ProductsPage() {
               className="form-control"
               required
               maxLength={100}
-              placeholder="e.g. Extra coffee shot"
+              placeholder={
+                tab === "products"
+                  ? "e.g. Matcha Latte"
+                  : "e.g. Extra coffee shot"
+              }
             />
           </label>
 
@@ -218,15 +303,38 @@ export function ProductsPage() {
               max="10000"
               step=".01"
               required
+              placeholder="0.00"
             />
           </label>
 
-          <button disabled={busy} className="btn btn-estylo">
-            Add add-on
-          </button>
-        </form>
-      )}
+          {tab === "products" && (
+            <label className="d-flex align-items-center gap-2 pb-2">
+              <input
+                type="checkbox"
+                checked={newActive}
+                onChange={(e) =>
+                  setNewActive(e.target.checked)
+                }
+              />
+              Available
+            </label>
+          )}
 
+          <button
+            type="submit"
+            disabled={busy}
+            className="btn btn-estylo"
+          >
+            {busy
+              ? "Adding..."
+              : tab === "products"
+                ? "Add Drink"
+                : "Add Add-On"}
+          </button>
+        </div>
+      </form>
+
+      {/* Active / Inactive entries */}
       {[true, false].map((available) => (
         <section
           key={String(available)}
@@ -248,6 +356,7 @@ export function ProductsPage() {
                   <th>Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {rows
                   .filter((r) => r.active === available)
@@ -268,9 +377,13 @@ export function ProductsPage() {
               </tbody>
             </table>
 
-            {!rows.some((r) => r.active === available) && (
+            {!rows.some(
+              (r) => r.active === available,
+            ) && (
               <p className="empty">
-                No {available ? "active" : "inactive"} entries.
+                No{" "}
+                {available ? "active" : "inactive"}{" "}
+                entries.
               </p>
             )}
           </div>

@@ -1,3 +1,4 @@
+
 import {
   BadRequestException,
   Body,
@@ -46,7 +47,56 @@ export class CoffeeController {
 
   @Get("products")
   products() {
-    return this.p.product.findMany({ orderBy: { name: "asc" } });
+    return this.p.product.findMany({
+      orderBy: { name: "asc" },
+    });
+  }
+
+  // NEW: Create a drink
+  @Post("products")
+  @Roles(UserRole.ADMIN)
+  async createProduct(
+    @Body() dto: AddonDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    const name = dto.name.trim();
+
+    if (!name) {
+      throw new BadRequestException("Drink name is required");
+    }
+
+    try {
+      return await this.p.$transaction(async (tx) => {
+        const product = await tx.product.create({
+          data: {
+            name,
+            priceCentavos: dto.priceCentavos,
+            active: dto.active,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            event: "PRODUCT_CREATED",
+            entityId: product.id,
+            userId: u.id,
+          },
+        });
+
+        return product;
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        throw new ConflictException(
+          "A drink with this name already exists",
+        );
+      }
+
+      throw e;
+    }
   }
 
   @Patch("products/:id")
@@ -57,7 +107,10 @@ export class CoffeeController {
     @CurrentUser() u: AuthUser,
   ) {
     return this.p.$transaction(async (tx) => {
-      const p = await tx.product.update({ where: { id }, data: dto });
+      const p = await tx.product.update({
+        where: { id },
+        data: dto,
+      });
 
       await tx.auditLog.create({
         data: {
@@ -73,12 +126,17 @@ export class CoffeeController {
 
   @Get("addons")
   addons() {
-    return this.p.addon.findMany({ orderBy: { name: "asc" } });
+    return this.p.addon.findMany({
+      orderBy: { name: "asc" },
+    });
   }
 
   @Post("addons")
   @Roles(UserRole.ADMIN)
-  createAddon(@Body() dto: AddonDto, @CurrentUser() u: AuthUser) {
+  createAddon(
+    @Body() dto: AddonDto,
+    @CurrentUser() u: AuthUser,
+  ) {
     return this.p.$transaction(async (tx) => {
       const addon = await tx.addon.create({
         data: { ...dto, name: dto.name.trim() },
@@ -220,7 +278,9 @@ export class CoffeeController {
     @CurrentUser() u: AuthUser,
   ) {
     if (id === u.id && !dto.active) {
-      throw new BadRequestException("Cannot disable yourself");
+      throw new BadRequestException(
+        "Cannot disable yourself",
+      );
     }
 
     return this.p.$transaction(async (tx) => {
@@ -248,7 +308,9 @@ export class CoffeeController {
     return this.p.auditLog.findMany({
       take: 200,
       orderBy: { createdAt: "desc" },
-      include: { user: { select: { displayName: true } } },
+      include: {
+        user: { select: { displayName: true } },
+      },
     });
   }
 
@@ -269,35 +331,42 @@ export class CoffeeController {
       start > end ||
       end.getTime() - start.getTime() > 366 * 86400000
     ) {
-      throw new BadRequestException("Invalid date range (max 366 days)");
+      throw new BadRequestException(
+        "Invalid date range (max 366 days)",
+      );
     }
 
-    const where = { createdAt: { gte: start, lte: end } };
+    const where = {
+      createdAt: { gte: start, lte: end },
+    };
 
-    const [count, paid, open, statuses] = await this.p.$transaction([
-      this.p.order.count({ where }),
-      this.p.order.aggregate({
-        where: {
-          ...where,
-          payment: "PAID",
-          status: { not: "CANCELLED" },
-        },
-        _sum: { totalCentavos: true },
-        _count: true,
-      }),
-      this.p.order.count({
-        where: {
-          ...where,
-          status: { in: ["NEW", "PREPARING", "READY"] },
-        },
-      }),
-      this.p.order.groupBy({
-        by: ["status"],
-        where,
-        _count: true,
-        orderBy: { status: "asc" },
-      }),
-    ]);
+    const [count, paid, open, statuses] =
+      await this.p.$transaction([
+        this.p.order.count({ where }),
+        this.p.order.aggregate({
+          where: {
+            ...where,
+            payment: "PAID",
+            status: { not: "CANCELLED" },
+          },
+          _sum: { totalCentavos: true },
+          _count: true,
+        }),
+        this.p.order.count({
+          where: {
+            ...where,
+            status: {
+              in: ["NEW", "PREPARING", "READY"],
+            },
+          },
+        }),
+        this.p.order.groupBy({
+          by: ["status"],
+          where,
+          _count: true,
+          orderBy: { status: "asc" },
+        }),
+      ]);
 
     return {
       from: start,
