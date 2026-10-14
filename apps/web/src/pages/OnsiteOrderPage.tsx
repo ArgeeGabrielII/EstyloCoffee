@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, money } from "../api/client";
 import type { Product, Addon } from "../types";
+import { generateUUID } from "../utils/uuid";
 
 type CartLine = {
   id: string;
@@ -33,7 +34,7 @@ type Receipt = {
 };
 
 function newKey() {
-  return crypto.randomUUID();
+  return generateUUID();
 }
 
 export function OnsiteOrderPage() {
