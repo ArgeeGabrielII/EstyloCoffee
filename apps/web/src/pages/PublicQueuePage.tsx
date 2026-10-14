@@ -22,7 +22,7 @@ const colors: Record<QueueStatus, string> = {
 
 export function PublicQueuePage() {
   const { data, error, loading } =
-    useAutoRefresh<PublicOrder[]>("/queue/public");
+    useAutoRefresh<PublicOrder[]>("/queue/public", []);
 
   const rows = data || [];
 
