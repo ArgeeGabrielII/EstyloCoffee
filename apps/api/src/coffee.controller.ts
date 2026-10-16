@@ -308,18 +308,6 @@ export class CoffeeController {
     });
   }
 
-  @Get("audit")
-  @Roles(UserRole.ADMIN)
-  audit() {
-    return this.p.auditLog.findMany({
-      take: 200,
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: { select: { displayName: true } },
-      },
-    });
-  }
-
   @Get("reports")
   @Roles(UserRole.ADMIN)
   async reports(

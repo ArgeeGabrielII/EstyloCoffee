@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { CoffeeController } from "./coffee.controller";
+import { AuditController } from "./audit.controller";
 import { CoffeeService } from "./coffee.service";
 import { HealthController } from "./health.controller";
 import { QueueController } from "./queue.controller";
@@ -16,6 +17,7 @@ import { CupsReportController } from "./cups-report.controller";
   ],
   controllers: [
     CoffeeController,
+    AuditController,
     HealthController,
     QueueController,
     OnsiteController,
