@@ -74,6 +74,29 @@ export function OrdersPage() {
     }
   }
 
+  async function voidOrder(order: Order) {
+    if (busy || order.status === "CANCELLED") return;
+    const warning = order.payment === "PAID"
+      ? "This removes the transaction from sales reports but does NOT refund the customer.\n\n"
+      : "";
+    if (!window.confirm(
+      `Void transaction ${order.id.slice(0, 8)} for ${money(order.totalCentavos)}?\n\n` +
+      warning + "This action cannot be undone."
+    )) return;
+
+    setBusy(true);
+    setActionError("");
+    try {
+      await api("/orders/" + order.id + "/void", { method: "POST" });
+      setRevision((old) => old + 1);
+      setExpanded((old) => ({ ...old, CANCELLED: true }));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Unable to void transaction.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-title">
@@ -260,6 +283,17 @@ export function OrdersPage() {
                                 Mark paid
                               </button>
                             )}
+
+                          {order.status !== "CANCELLED" && (
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              disabled={busy}
+                              onClick={() => voidOrder(order)}
+                            >
+                              Void Transaction
+                            </button>
+                          )}
 
                           {nextSteps[order.status].map((status) => (
                             <button

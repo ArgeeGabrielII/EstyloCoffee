@@ -221,6 +221,12 @@ export class CoffeeController {
     return this.coffee.update(id, dto, u.id);
   }
 
+  @Post("orders/:id/void")
+  @Roles(UserRole.ADMIN, UserRole.CASHIER)
+  voidOrder(@Param("id") id: string, @CurrentUser() u: AuthUser) {
+    return this.coffee.voidOrder(id, u.id);
+  }
+
   @Get("users")
   @Roles(UserRole.ADMIN)
   users() {

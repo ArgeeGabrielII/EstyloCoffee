@@ -127,6 +127,36 @@ export class CoffeeService {
     });
   }
 
+  async voidOrder(id: string, actor: string) {
+    return this.p.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM "Order" WHERE id=${id} FOR UPDATE
+      `;
+
+      const old = await tx.order.findUnique({ where: { id } });
+      if (!old) throw new NotFoundException();
+      if (old.status === "CANCELLED") {
+        throw new BadRequestException("Transaction is already cancelled or voided");
+      }
+
+      // Preserve paid status and original amount for audit and reconciliation.
+      // Voiding excludes this sale from reports; it does NOT issue a refund.
+      const order = await tx.order.update({
+        where: { id },
+        data: { status: "CANCELLED" },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          event: old.payment === "PAID" ? "ORDER_VOIDED_PAID" : "ORDER_VOIDED_UNPAID",
+          entityId: id,
+          userId: actor,
+        },
+      });
+      return order;
+    });
+  }
+
   async update(id: string, dto: UpdateOrderDto, actor: string) {
     return this.p.$transaction(async (tx) => {
       await tx.$queryRaw`
