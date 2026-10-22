@@ -9,9 +9,20 @@ import { QueueController } from "./queue.controller";
 import { OnsiteController } from "./onsite.controller";
 import { CupsReportController } from "./cups-report.controller";
 import { PaymentMethodsController } from "./payment-methods.controller";
+import { MarketingDashboardController } from "./marketing-dashboard.controller";
+
 @Module({
   imports: [PrismaModule, AuthModule],
-  controllers: [CoffeeController, AuditController, HealthController, QueueController, OnsiteController, CupsReportController, PaymentMethodsController],
+  controllers: [
+    CoffeeController,
+    AuditController,
+    HealthController,
+    QueueController,
+    OnsiteController,
+    CupsReportController,
+    PaymentMethodsController,
+    MarketingDashboardController,
+  ],
   providers: [CoffeeService],
 })
 export class AppModule {}
