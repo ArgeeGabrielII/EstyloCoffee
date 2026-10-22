@@ -105,7 +105,7 @@ export function OrdersPage() {
       {paymentOrder && (
         <div className="modal d-block" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title"
           style={{ background: "rgba(0,0,0,.65)", zIndex: 2000 }}>
-          <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content" style={{ borderRadius: 16 }}>
               <div className="modal-header">
                 <h2 className="modal-title fs-5" id="payment-modal-title">Confirm Payment</h2>
@@ -117,12 +117,43 @@ export function OrdersPage() {
                   {paymentOrder.queueNumber != null && ` · Queue #${String(paymentOrder.queueNumber).padStart(3,"0")}`}
                 </p>
                 <p className="fs-4 fw-bold">{money(paymentOrder.totalCentavos)}</p>
-                <label className="form-label fw-semibold" htmlFor="payment-method">Mode of Payment</label>
-                <select id="payment-method" className="form-select" value={selectedMethod}
-                  onChange={e => setSelectedMethod(e.target.value)} disabled={busy}>
-                  <option value="">Select payment method</option>
-                  {methods.filter(m => m.active).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <p className="form-label fw-semibold mb-2" id="payment-method-label">Choose payment method</p>
+                <div className="row g-3" role="group" aria-labelledby="payment-method-label">
+                  {methods.filter(m => m.active).map(m => {
+                    const selected = selectedMethod === m.id;
+                    const icon = /cash/i.test(m.name) ? "bi-cash-stack"
+                      : /gcash/i.test(m.name) ? "bi-phone"
+                      : /bank|transfer/i.test(m.name) ? "bi-bank" : "bi-credit-card-2-front";
+                    return (
+                      <div className="col-6" key={m.id}>
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          disabled={busy}
+                          onClick={() => setSelectedMethod(m.id)}
+                          className="w-100 d-flex flex-column justify-content-center align-items-center gap-2"
+                          style={{
+                            minHeight: 116,
+                            padding: 14,
+                            borderRadius: 14,
+                            border: selected ? "3px solid #b28b43" : "2px solid #d7d2c8",
+                            background: selected ? "#fff3d5" : "#fff",
+                            color: "#211b13",
+                            boxShadow: selected ? "0 0 0 2px rgba(178,139,67,.15)" : "none",
+                            cursor: busy ? "not-allowed" : "pointer",
+                            touchAction: "manipulation",
+                          }}
+                        >
+                          <i className={`bi ${icon}`} aria-hidden="true" style={{ fontSize: 30 }} />
+                          <span className="fw-bold text-center" style={{ fontSize: 17 }}>{m.name}</span>
+                          <span className="small" style={{ color: selected ? "#7b581e" : "#777" }}>
+                            {selected ? "✓ Selected" : "Tap to select"}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
                 {!methods.some(m => m.active) && <p className="text-danger small mt-2">No active payment methods. Contact an administrator.</p>}
                 {methodError && <div role="alert" className="alert alert-danger mt-3">{methodError}</div>}
                 <p className="text-muted small mt-3 mb-0">Payment confirmation cannot be reversed here.</p>
