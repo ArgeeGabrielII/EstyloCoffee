@@ -1,39 +1,72 @@
 # Estylo Coffee Tracker
 
-Rebuilt to follow the supplied **estylo-barbers-tracker**: npm workspaces, NestJS API, Prisma/PostgreSQL, React/Vite/Bootstrap, black-and-gold management sidebar, and a separate touch-friendly cashier workspace. The supplied coffee logo and all 11 drink names are included. Only ADMIN and CASHIER roles are supported.
+Estylo Coffee is a React/Vite frontend, NestJS/Prisma API, and PostgreSQL database for café ordering and operations. **Docker is not used.** PostgreSQL runs as a native service or on an independently hosted database; Node.js and npm run the application directly.
 
-## Start with Docker Compose
+## Requirements
 
-1. Copy `.env.example` to `.env`.
-2. Replace POSTGRES_PASSWORD with a strong **alphanumeric** password. Set JWT_SECRET to a random 32+ character secret and ADMIN_PASSWORD to a strong 12+ character password. No fixed default login is provided.
-3. Set APP_ORIGIN to the **exact browser origin**: for local use `http://localhost:8080`; for a trusted LAN `http://<server-IP>:8080`; for production `https://coffee.example.com`. One origin is allowed. Set COOKIE_SECURE=true when using HTTPS.
-4. Run `docker compose up -d --build`. The API deploys Prisma migrations and seeds the menu/initial Admin before serving. Existing prices/users are not overwritten.
-5. Open APP_ORIGIN in your browser. Sign in with ADMIN_USERNAME/ADMIN_PASSWORD from `.env`.
-6. Open **Drinks** and set real prices in pesos. Unpriced drinks cannot be sold. Open **Users** to create Cashier accounts.
-7. Use **Cashier** to create walk-in/SMS pickup/delivery orders, and **Orders** to record payment and preparation. Admin can view **Dashboard**, **Reports**, and **Audit Log**.
+- Node.js 22 and npm
+- PostgreSQL server and credentials (installed locally or hosted separately)
+- A database and user with privileges appropriate for migrations
+- Git; `pg_dump` and `psql` for backup/restore
 
-Compose publishes only frontend port 8080. The API and DB stay inside the Docker network. A new database volume named for this project is used. **This is a fresh NestJS/Prisma application; the previous Flask/SQLite/PostgreSQL tables are not automatically imported.** Back up existing data before adopting this version.
+## Quick start — local development
 
-## Local development
-
-Use Node.js 22, npm, and PostgreSQL 17. From the project root:
+From the project root:
 
 ```bash
 npm ci
-npm run db:generate
+cp .env.example .env
 ```
 
-Export variables from `.env` into your shell (copying the file alone does not export them). For local API development DATABASE_URL uses your PostgreSQL hostname, and APP_ORIGIN should be `http://localhost:5173` (Vite's origin). If you change ports, update APP_ORIGIN too.
+Edit the root `.env` and set a valid `DATABASE_URL`, strong `JWT_SECRET`, `ADMIN_PASSWORD`, and `APP_ORIGIN=http://localhost:5174`. The Vite configuration currently proxies `/api` to `http://localhost:3001`, so use `PORT=3001` for the API unless you also update `apps/web/vite.config.ts`.
+
+In the project root, load the environment and prepare Prisma:
 
 ```bash
+set -a
+. ./.env
+set +a
+npm run db:generate
 npm run db:deploy
 npm run db:seed
 npm run dev:api
-# In another shell:
+```
+
+In a **second terminal**, from the root:
+
+```bash
 npm run dev:web
 ```
 
-Vite proxies `/api` to localhost:3000. Browser requests need the expected Origin and `X-Estylo-Request: 1`; the frontend sends both. Do not expose the development server publicly.
+Open `http://localhost:5174` in your browser. Use the Admin credentials configured in `.env`. For local iPad testing, set `APP_ORIGIN` to the actual LAN URL and open that exact URL; use the host's LAN IP and configure Vite/API ports/firewall appropriately.
+
+**Root `.env` caveat:** Prisma running inside `apps/api` does not automatically find a `.env` stored at the repository root. Export the root variables before Prisma commands. Never commit `.env`.
+
+## Production deployment
+
+Run migrations, generate Prisma client, and build:
+
+```bash
+set -a; . ./.env; set +a
+npm run db:deploy
+npm run db:generate
+npm run build
+```
+
+Run the built API as a managed host process with `npm -w apps/api run start`. Serve `apps/web/dist` from an HTTPS-capable web server with SPA fallback and reverse-proxy `/api` to the API. Set `APP_ORIGIN` to the exact HTTPS origin and `COOKIE_SECURE=true`. These production hosting components are configured separately; no container configuration is required.
+
+## Operations
+
+- `/cashier`: touch-friendly POS and order creation; links to Orders.
+- `/orders`: order detail popup, unpaid watermark, payment confirmation cards, preparation workflow, and NEW-only cancel/void with confirmation.
+- `/dashboard`: daily operational KPIs, Sales Growth, Peak Sales Hour (when latest dashboard upgrade is installed).
+- `/reports`: sales and drink/add-on breakdowns.
+- `/maintenance/products`: drinks and add-ons.
+- `/maintenance/payment-methods`: admin-managed Cash/Bank Transfer/GCash and other payment methods.
+- `/maintenance/users`, `/maintenance/audit`: account maintenance and audit log.
+- `/onsite`, `/queue`: public ordering and queue display pages.
+
+SMS orders are entered manually; the app does not send SMS. Payment confirmation is manual, not a payment gateway.
 
 ## Validation
 
@@ -41,21 +74,27 @@ Vite proxies `/api` to localhost:3000. Browser requests need the expected Origin
 npm run build
 npm run lint
 npm test
+npm run test:responsive
 ```
 
-`lint` runs TypeScript checks in both workspaces. API tests exercise role/active-user guards, DTO validation, price snapshots, idempotent order retries and payment/preparation rules. Database calls in service tests are mocked. The included GitHub Actions workflow also runs `tests/integration.cjs` against a disposable PostgreSQL database; that suite requires INTEGRATION_TEST_DATABASE=true and seeded credentials. PostgreSQL/Compose acceptance testing is still required.
+The responsive test requires Playwright Chromium (`npx playwright install chromium`). Integration tests require a separate test PostgreSQL database; never run destructive tests on live data.
 
-## Project structure
+## Backup and recovery (native PostgreSQL)
 
-- `apps/api/src/auth`, `common`, `prisma`: reference-pattern authentication and authorization.
-- `apps/api/src/coffee.*`, `order-rules.ts`: coffee-specific endpoints and ordering rules.
-- `apps/api/prisma`: schema, initial migration with constraints, repeatable seed.
-- `apps/web/src/auth`, `components`, `pages`: authentication, admin shell, cashier and management pages.
-- `scripts`: database backup/restore helpers.
-- `docs/Software-Application-Document.md`: requirements, architecture, roles, data, API, security, operations, validation, and scope.
+```bash
+bash scripts/backup-db.sh
+# For a deliberate restore to an EMPTY recovery database only:
+CONFIRM_RESTORE=YES bash scripts/restore-db.sh backups/your-backup.sql
+```
 
-SMS orders are manually entered by staff; no SMS gateway or automated replies are configured. Payments are manually confirmed, not electronically processed. No inventory/recipe system or barber-specific modules are carried over. See the application document for the full implementation scope.
+Both scripts use the `DATABASE_URL` in the root `.env` and require `pg_dump`/`psql` installed on the host. Verify the database target before running restore. Backups are local files; copy them securely off-host.
 
-## Responsive browser checks
+## Files
 
-After building, run `npx playwright install chromium` then `npm run test:responsive`. This suite serves the compiled frontend through browser request interception with mock API fixtures and checks six phone/tablet resolutions. It does not contact PostgreSQL. The included `docs/browser-results.json` records the checks completed during this rebuild. Test fixture prices are not seeded application prices.
+- `apps/api`: NestJS backend and Prisma migrations
+- `apps/web`: React/Vite frontend
+- `docs/Software-Application-Document.md`: detailed architecture, features, and operations
+- `scripts/backup-db.sh`, `scripts/restore-db.sh`: native database utilities
+- `makefile`: optional convenience commands
+
+For existing databases, use migrations and backups; **do not run `prisma migrate reset`**.
