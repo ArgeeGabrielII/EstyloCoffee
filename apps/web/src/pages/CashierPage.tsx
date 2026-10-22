@@ -31,6 +31,15 @@ export function CashierPage() {
   const [success, setSuccess] = useState("");
   const [successQueue, setSuccessQueue] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState<{
+    id: string;
+    queueNumber: number | null;
+    customer: string;
+    cups: number;
+    total: number;
+  } | null>(null);
+  const submitting = useRef(false);
   const [addonModalLineId, setAddonModalLineId] = useState<string | null>(null);
   const [addonDraft, setAddonDraft] = useState<Record<string, number>>({});
   const requestKey = useRef("");
@@ -129,9 +138,20 @@ export function CashierPage() {
     sum + addon.priceCentavos * (addonDraft[addon.id] || 0), 0);
   const editingCupTotal = (editingLine?.freeDrink ? 0 : (editingProduct?.priceCentavos || 0)) + draftAddonTotal;
 
-  async function submit(e: FormEvent) {
+  function reviewOrder(e: FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || submitting.current) return;
+    if (!cart.length) {
+      setError("Select at least one drink.");
+      return;
+    }
+    setError("");
+    setReviewOpen(true);
+  }
+
+  async function confirmOrder() {
+    if (busy || submitting.current || !reviewOpen || !cart.length) return;
+    submitting.current = true;
     if (!cart.length) {
       setError("Select at least one drink.");
       return;
@@ -157,6 +177,14 @@ export function CashierPage() {
       });
       setSuccess(result.id);
       setSuccessQueue(result.queueNumber);
+      setCreatedOrder({
+        id: result.id,
+        queueNumber: result.queueNumber,
+        customer: customer.trim() || "Walk-in Customer",
+        cups: cart.length,
+        total,
+      });
+      setReviewOpen(false);
       setCart([]);
       setCustomer("");
       setPhone("");
@@ -168,6 +196,7 @@ export function CashierPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Order failed");
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -214,7 +243,7 @@ export function CashierPage() {
           {!products.some((p) => p.active) && <p className="empty">No menu available.</p>}
         </section>
 
-        <form className="pos-right" onSubmit={submit} onChange={changed}>
+        <form className="pos-right" onSubmit={reviewOrder} onChange={changed}>
           <h4>Current order</h4>
           <div className="sale-lines">
             {!cart.length ? <p className="empty">Select drinks to begin.</p> :
@@ -291,7 +320,7 @@ export function CashierPage() {
                 value={address} onChange={(e) => setAddress(e.target.value)} />
             </>}
             <button type="submit" className="btn btn-estylo complete-btn w-100" disabled={busy || !cart.length}>
-              {busy ? "CREATING…" : "CREATE ORDER"}
+              CREATE ORDER
             </button>
             <button type="button" className="btn btn-outline-light clear-btn w-100" disabled={busy}
               onClick={() => { setCart([]); setAddonModalLineId(null); setAddonDraft({}); changed(); }}>
@@ -300,6 +329,101 @@ export function CashierPage() {
           </fieldset>
         </form>
       </div>
+
+      {/* Order review: the POST request is only triggered by Confirm Order. */}
+      {reviewOpen && (
+        <div className="addon-modal-backdrop" role="presentation">
+          <section
+            className="addon-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-order-title"
+            style={{ maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <header className="addon-modal-header">
+              <div>
+                <h4 id="review-order-title">Review & Confirm Order</h4>
+                <p>Nothing is saved until you tap Confirm Order.</p>
+              </div>
+              <button type="button" className="addon-modal-close"
+                disabled={busy} aria-label="Back to edit"
+                onClick={() => setReviewOpen(false)}>×</button>
+            </header>
+            <div className="p-3">
+              <p className="mb-1"><strong>Customer:</strong> {customer.trim() || "Walk-in Customer"}</p>
+              <p className="mb-1"><strong>Fulfillment:</strong> {fulfillment.replace("_", " ")}</p>
+              <p className="mb-1"><strong>Source:</strong> {source.replace("_", " ")}</p>
+              {phone.trim() && <p className="mb-1"><strong>Phone:</strong> {phone}</p>}
+              {fulfillment === "DELIVERY" && <p><strong>Address:</strong> {address}</p>}
+              <p className="small text-secondary mt-2">Queue number will be assigned after confirmation.</p>
+              <hr />
+              {cart.map((line, index) => {
+                const product = products.find((p) => p.id === line.productId);
+                const chosen = addons.filter((addon) => (line.addons[addon.id] || 0) > 0);
+                return (
+                  <div key={line.id} className="mb-3 pb-2 border-bottom">
+                    <div className="d-flex justify-content-between gap-2">
+                      <strong>Cup {index + 1} — {product?.name || "Drink"}</strong>
+                      <strong>{money(lineTotal(line))}</strong>
+                    </div>
+                    <small className="d-block">
+                      Base: {line.freeDrink ? <><s>{money(basePrice(line))}</s> <strong className="text-success">FREE</strong></> : money(basePrice(line))}
+                    </small>
+                    {chosen.map((addon) => (
+                      <small key={addon.id} className="d-block">
+                        + {addon.name} × {line.addons[addon.id]} — {money(addon.priceCentavos * line.addons[addon.id])}
+                      </small>
+                    ))}
+                    {line.freeDrink && <small className="d-block text-success">Only the base drink is free; add-ons are charged.</small>}
+                  </div>
+                );
+              })}
+              <div className="d-flex justify-content-between"><strong>Total cups</strong><strong>{totalCupCount}</strong></div>
+              {discount > 0 && <div className="d-flex justify-content-between"><span>Free drink discount</span><strong>−{money(discount)}</strong></div>}
+              <div className="d-flex justify-content-between mt-2"><strong>Grand total</strong><strong>{money(total)}</strong></div>
+              {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
+            </div>
+            <footer className="addon-modal-footer">
+              <div className="addon-modal-actions" style={{ width: "100%" }}>
+                <button type="button" className="btn btn-outline-light" disabled={busy}
+                  onClick={() => { setReviewOpen(false); setError(""); }}>Back to Edit</button>
+                <button type="button" className="btn btn-estylo" disabled={busy}
+                  onClick={confirmOrder}>{busy ? "Creating…" : "Confirm Order"}</button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {/* Actual backend-assigned queue number is shown only after creation. */}
+      {createdOrder && (
+        <div className="addon-modal-backdrop" role="presentation">
+          <section className="addon-modal" role="dialog" aria-modal="true" aria-labelledby="created-order-title">
+            <header className="addon-modal-header">
+              <div>
+                <h4 id="created-order-title">Order Created Successfully!</h4>
+                <p>Order {createdOrder.id.slice(0, 8)}</p>
+              </div>
+            </header>
+            <div className="p-4 text-center">
+              <div className="small text-secondary">QUEUE NUMBER</div>
+              <h2 className="display-4 text-warning">
+                {createdOrder.queueNumber == null ? "Pending" : `#${String(createdOrder.queueNumber).padStart(3, "0")}`}
+              </h2>
+              <div className="small text-secondary">CUSTOMER NAME</div>
+              <h4>{createdOrder.customer}</h4>
+              <p>{createdOrder.cups} cup(s) · {money(createdOrder.total)}</p>
+            </div>
+            <footer className="addon-modal-footer">
+              <div className="addon-modal-actions" style={{ width: "100%" }}>
+                <button type="button" className="btn btn-outline-light"
+                  onClick={() => setCreatedOrder(null)}>Create New Order</button>
+                <Link className="btn btn-estylo" to="/orders">Open Order Board</Link>
+              </div>
+            </footer>
+          </section>
+        </div>
+      )}
 
       {addonModalLineId && editingLine && (
         <div className="addon-modal-backdrop" role="presentation"
