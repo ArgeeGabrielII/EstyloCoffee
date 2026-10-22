@@ -43,11 +43,11 @@ export function CashierPage() {
   const activeAddons = addons.filter((addon) => addon.active);
 
   const editingLine = cart.find(
-    (line) => line.id === addonModalLineId
+    (line) => line.id === addonModalLineId,
   );
 
   const editingProduct = products.find(
-    (product) => product.id === editingLine?.productId
+    (product) => product.id === editingLine?.productId,
   );
 
   useEffect(() => {
@@ -60,7 +60,9 @@ export function CashierPage() {
         setAddons(extras);
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "Unable to load menu.");
+        setError(
+          e instanceof Error ? e.message : "Unable to load menu.",
+        );
       });
   }, []);
 
@@ -83,11 +85,12 @@ export function CashierPage() {
   function changed() {
     requestKey.current = "";
     setSuccess("");
+    setSuccessQueue(null);
   }
 
   function lineTotal(line: CartLine) {
     const product = products.find(
-      (p) => p.id === line.productId
+      (p) => p.id === line.productId,
     );
 
     const basePrice = product?.priceCentavos || 0;
@@ -96,7 +99,7 @@ export function CashierPage() {
       (sum, addon) =>
         sum +
         addon.priceCentavos * (line.addons[addon.id] || 0),
-      0
+      0,
     );
 
     return basePrice + addonPrice;
@@ -104,7 +107,7 @@ export function CashierPage() {
 
   const total = cart.reduce(
     (sum, line) => sum + lineTotal(line),
-    0
+    0,
   );
 
   const totalCupCount = cart.length;
@@ -136,7 +139,7 @@ export function CashierPage() {
     changed();
 
     setCart((old) =>
-      old.filter((line) => line.id !== lineId)
+      old.filter((line) => line.id !== lineId),
     );
   }
 
@@ -149,14 +152,14 @@ export function CashierPage() {
 
   function updateAddonQuantity(
     addonId: string,
-    change: number
+    change: number,
   ) {
     setAddonDraft((old) => {
       const currentQuantity = old[addonId] || 0;
 
       const newQuantity = Math.min(
         99,
-        Math.max(0, currentQuantity + change)
+        Math.max(0, currentQuantity + change),
       );
 
       return {
@@ -178,8 +181,8 @@ export function CashierPage() {
               ...line,
               addons: { ...addonDraft },
             }
-          : line
-      )
+          : line,
+      ),
     );
 
     setAddonModalLineId(null);
@@ -193,7 +196,7 @@ export function CashierPage() {
     (sum, addon) =>
       sum +
       addon.priceCentavos * (addonDraft[addon.id] || 0),
-    0
+    0,
   );
 
   const editingCupTotal =
@@ -216,7 +219,10 @@ export function CashierPage() {
     requestKey.current ||= key();
 
     try {
-      const result = await api<{ id: string; queueNumber: number | null }>("/orders", {
+      const result = await api<{
+        id: string;
+        queueNumber: number | null;
+      }>("/orders", {
         method: "POST",
         headers: {
           "Idempotency-Key": requestKey.current,
@@ -242,6 +248,7 @@ export function CashierPage() {
 
       setSuccess(result.id);
       setSuccessQueue(result.queueNumber);
+
       setCart([]);
       setCustomer("");
       setPhone("");
@@ -249,9 +256,17 @@ export function CashierPage() {
       setAddonModalLineId(null);
       setAddonDraft({});
       requestKey.current = "";
+
+      // NEW: Scroll to the top only after successful creation.
+      // The success banner and "Open order board" link
+      // are located at the top of this page.
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : "Order failed"
+        e instanceof Error ? e.message : "Order failed",
       );
     } finally {
       setBusy(false);
@@ -295,7 +310,7 @@ export function CashierPage() {
               className="btn btn-sm btn-outline-light"
               onClick={() =>
                 logout().catch((e) =>
-                  setError(e.message)
+                  setError(e.message),
                 )
               }
             >
@@ -320,9 +335,13 @@ export function CashierPage() {
           className="alert alert-success m-3"
         >
           {successQueue != null && (
-            <strong>Queue #{String(successQueue).padStart(3, "0")} — </strong>
+            <strong>
+              Queue #{String(successQueue).padStart(3, "0")} —{" "}
+            </strong>
           )}
+
           Order {success.slice(0, 8)} created.{" "}
+
           <Link to="/orders">
             Open order board
           </Link>
@@ -394,14 +413,13 @@ export function CashierPage() {
             ) : (
               cart.map((line, index) => {
                 const product = products.find(
-                  (p) =>
-                    p.id === line.productId
+                  (p) => p.id === line.productId,
                 );
 
                 const selectedAddons =
                   activeAddons.filter(
                     (addon) =>
-                      (line.addons[addon.id] || 0) > 0
+                      (line.addons[addon.id] || 0) > 0,
                   );
 
                 const selectedAddonCount =
@@ -409,18 +427,17 @@ export function CashierPage() {
                     (sum, addon) =>
                       sum +
                       (line.addons[addon.id] || 0),
-                    0
+                    0,
                   );
 
-                const addonSummary =
-                  selectedAddons
-                    .map(
-                      (addon) =>
-                        `${addon.name} × ${
-                          line.addons[addon.id]
-                        }`
-                    )
-                    .join(" · ");
+                const addonSummary = selectedAddons
+                  .map(
+                    (addon) =>
+                      `${addon.name} × ${
+                        line.addons[addon.id]
+                      }`,
+                  )
+                  .join(" · ");
 
                 return (
                   <div
@@ -437,7 +454,7 @@ export function CashierPage() {
                         <small>
                           Base price:{" "}
                           {money(
-                            product?.priceCentavos || 0
+                            product?.priceCentavos || 0,
                           )}
                         </small>
                       </div>
@@ -527,7 +544,10 @@ export function CashierPage() {
             <input
               id="customer"
               className="form-control"
-              required={source === "SMS" || fulfillment === "DELIVERY"}
+              required={
+                source === "SMS" ||
+                fulfillment === "DELIVERY"
+              }
               maxLength={100}
               placeholder="Leave blank to use queue number"
               value={customer}
@@ -569,9 +589,7 @@ export function CashierPage() {
                   className="form-select"
                   value={fulfillment}
                   onChange={(e) =>
-                    setFulfillment(
-                      e.target.value
-                    )
+                    setFulfillment(e.target.value)
                   }
                 >
                   <option value="PICKUP">
@@ -669,8 +687,7 @@ export function CashierPage() {
           role="presentation"
           onClick={(event) => {
             if (
-              event.target ===
-              event.currentTarget
+              event.target === event.currentTarget
             ) {
               closeAddonModal();
             }
@@ -690,7 +707,7 @@ export function CashierPage() {
                   Add-ons for Cup{" "}
                   {cart.findIndex(
                     (line) =>
-                      line.id === editingLine.id
+                      line.id === editingLine.id,
                   ) + 1}
                 </h4>
 
@@ -730,7 +747,7 @@ export function CashierPage() {
 
                       <span className="addon-option-price">
                         {money(
-                          addon.priceCentavos
+                          addon.priceCentavos,
                         )}{" "}
                         each
                       </span>
@@ -749,7 +766,7 @@ export function CashierPage() {
                         onClick={() =>
                           updateAddonQuantity(
                             addon.id,
-                            -1
+                            -1,
                           )
                         }
                       >
@@ -770,7 +787,7 @@ export function CashierPage() {
                         onClick={() =>
                           updateAddonQuantity(
                             addon.id,
-                            1
+                            1,
                           )
                         }
                       >
