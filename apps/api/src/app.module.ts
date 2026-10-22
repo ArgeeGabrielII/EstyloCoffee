@@ -1,4 +1,3 @@
-
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -9,22 +8,10 @@ import { HealthController } from "./health.controller";
 import { QueueController } from "./queue.controller";
 import { OnsiteController } from "./onsite.controller";
 import { CupsReportController } from "./cups-report.controller";
-
+import { PaymentMethodsController } from "./payment-methods.controller";
 @Module({
-  imports: [
-    PrismaModule,
-    AuthModule,
-  ],
-  controllers: [
-    CoffeeController,
-    AuditController,
-    HealthController,
-    QueueController,
-    OnsiteController,
-    CupsReportController,
-  ],
-  providers: [
-    CoffeeService,
-  ],
+  imports: [PrismaModule, AuthModule],
+  controllers: [CoffeeController, AuditController, HealthController, QueueController, OnsiteController, CupsReportController, PaymentMethodsController],
+  providers: [CoffeeService],
 })
 export class AppModule {}

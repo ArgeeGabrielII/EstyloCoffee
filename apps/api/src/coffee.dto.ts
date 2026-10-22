@@ -43,6 +43,7 @@ export class OrderDto {
 export class UpdateOrderDto {
   @IsOptional() @IsEnum(OrderStatus) status?: OrderStatus;
   @IsOptional() @IsEnum(PaymentStatus) payment?: PaymentStatus;
+  @IsOptional() @IsUUID() paymentMethodId?: string;
 }
 export class UserDto {
   @IsString() @MinLength(3) @MaxLength(80) username!: string;

@@ -135,8 +135,21 @@ export class CoffeeService {
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
       if (!old) throw new NotFoundException();
+      if (dto.paymentMethodId && dto.payment !== "PAID")
+        throw new BadRequestException("Payment method can only be set when marking paid");
       const next = transition(old, dto);
-      const order = await tx.order.update({ where: { id }, data: next });
+      let paymentData = {};
+      if (dto.payment === "PAID") {
+        if (old.payment === "PAID")
+          throw new BadRequestException("Order already paid");
+        if (!dto.paymentMethodId)
+          throw new BadRequestException("Select a payment method");
+        const method = await tx.paymentMethod.findUnique({ where: { id: dto.paymentMethodId } });
+        if (!method?.active)
+          throw new BadRequestException("Payment method unavailable");
+        paymentData = { paymentMethodId: method.id, paymentMethodName: method.name, paidAt: new Date() };
+      }
+      const order = await tx.order.update({ where: { id }, data: { ...next, ...paymentData } });
       await tx.auditLog.create({
         data: { event: "ORDER_" + next.status + "_" + next.payment, entityId: id, userId: actor },
       });

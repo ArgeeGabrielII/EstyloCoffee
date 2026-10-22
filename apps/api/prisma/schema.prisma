@@ -73,6 +73,10 @@ model Order {
   createdBy     String
   user          User          @relation(fields: [createdBy], references: [id])
   items         OrderItem[]
+  paymentMethodId String?
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  paymentMethodName String?
+  paidAt DateTime?
 
   @@unique([queueDate, queueNumber])
   @@index([createdAt])
@@ -120,4 +124,12 @@ model OrderItemAddon {
   name              String
   quantity          Int
   unitPriceCentavos Int
+}
+
+model PaymentMethod {
+  id String @id @default(uuid())
+  name String @unique
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  orders Order[]
 }
