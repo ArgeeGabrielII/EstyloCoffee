@@ -24,6 +24,17 @@ const actionLabels: Record<Status, string> = {
   COMPLETED: "Complete Order", CANCELLED: "Cancel Order",
 };
 
+// Manila uses UTC+08:00 year-round. Compare calendar dates, not elapsed 24-hour windows.
+const manilaDate = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+});
+function dateKey(date: Date): string {
+  const parts = manilaDate.formatToParts(date);
+  const value = (type: string) => parts.find(part => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+const pendingStatuses: Status[] = ["NEW", "PREPARING", "READY"];
+
 function PaymentIcon({ name }: { name: string }) {
   const n = name.toLowerCase();
   const icon = n.includes("cash") ? "bi-cash-stack" : n.includes("bank") ? "bi-bank" : "bi-phone";
@@ -41,7 +52,17 @@ export function OrdersPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [activeTab, setActiveTab] = useState<Status>("NEW");
+  const [olderOpen, setOlderOpen] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 3000);
+    return () => window.clearInterval(timer);
+  }, []);
   const { data: orders, error, loading, updatedAt } = useAutoRefresh<Order[]>("/queue/staff", [], revision);
+  const todayKey = dateKey(now);
+  const todayOrders = orders.filter(order => dateKey(new Date(order.createdAt)) === todayKey);
+  const previousPending = orders.filter(order =>
+    dateKey(new Date(order.createdAt)) < todayKey && pendingStatuses.includes(order.status));
   const detailOrder = detailId ? orders.find(o => o.id === detailId) ?? null : null;
 
   useEffect(() => {
@@ -185,10 +206,34 @@ export function OrdersPage() {
     </div>
     {(error || actionError) && <div role="alert" className="alert alert-danger">{actionError || error}</div>}
     <p className="small text-secondary">{loading ? "Loading orders…" : updatedAt ? `Last updated: ${updatedAt.toLocaleTimeString()}` : "Waiting for connection…"}</p>
+    <section className="card-estylo mb-3" aria-label="Current order date">
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <strong className="d-block fs-5">Today's Orders</strong>
+          <span className="text-secondary">{new Intl.DateTimeFormat("en-PH", {
+            timeZone: "Asia/Manila", dateStyle: "full",
+          }).format(now)} · Philippine time</span>
+        </div>
+        <span className="badge text-bg-secondary fs-6">{todayOrders.length} orders today</span>
+      </div>
+    </section>
+    {previousPending.length > 0 && <div className="alert alert-warning mb-3" role="alert" aria-live="polite">
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <strong><i className="bi bi-exclamation-triangle-fill me-2" aria-hidden="true" />
+            Attention: {previousPending.length} previous-day order{previousPending.length === 1 ? " is" : "s are"} not yet completed/cancelled</strong>
+          <div className="small mt-1">Older New, Preparing, or Ready for Pickup orders need attention.</div>
+        </div>
+        <button type="button" className="btn btn-outline-dark fw-semibold" style={{ minHeight: 44 }}
+          onClick={() => { setOlderOpen(true); document.getElementById("previous-pending-orders")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
+          View Pending Orders
+        </button>
+      </div>
+    </div>}
     <div role="tablist" aria-label="Order status" className="d-flex gap-2 mb-3 pb-2"
       style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
       {groups.map(group => {
-        const count = orders.filter(order => order.status === group.status).length;
+        const count = todayOrders.filter(order => order.status === group.status).length;
         const selected = activeTab === group.status;
         return <button key={group.status} id={`tab-${group.status}`} type="button" role="tab"
           aria-selected={selected} aria-controls={`panel-${group.status}`}
@@ -201,14 +246,52 @@ export function OrdersPage() {
       })}
     </div>
     {groups.filter(group => group.status === activeTab).map(group => {
-      const rows = orders.filter(order => order.status === group.status);
+      const rows = todayOrders.filter(order => order.status === group.status);
       return <section key={group.status} id={`panel-${group.status}`} role="tabpanel"
         aria-labelledby={`tab-${group.status}`} className="card-estylo mb-3">
         <h2 className="h5 mb-3" style={{ color: group.color }}>{group.label}</h2>
-        {(group.status === "COMPLETED" || group.status === "CANCELLED") &&
-          <p className="small text-secondary">From the latest 50 completed/cancelled orders.</p>}
+
         {!rows.length ? <p className="empty mt-3">No orders in this section.</p> :
           <div className="order-grid mt-3">{rows.map(order =>
+            <article key={order.id} className="card-estylo" role="button" tabIndex={0}
+              aria-label={`View details for ${order.customer}, ${money(order.totalCentavos)}`}
+              onClick={() => setDetailId(order.id)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailId(order.id); } }}
+              style={{ position: "relative", overflow: "hidden", cursor: "pointer", minHeight: 210 }}>
+              {order.payment === "UNPAID" && <span aria-hidden="true" style={{
+                position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-27deg)",
+                fontSize: "clamp(3rem, 6vw, 5rem)", fontWeight: 900, letterSpacing: ".12em",
+                color: "#b88a35", opacity: .15, pointerEvents: "none", whiteSpace: "nowrap", zIndex: 0,
+              }}>UNPAID</span>}
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <small>{new Date(order.createdAt).toLocaleString()}</small>
+                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(2rem, 4vw, 2.50rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+                <h3 className="h5 mt-2 mb-2">{order.customer}</h3>
+                <span className={`badge ${order.payment === "PAID" ? "text-bg-success" : "text-bg-warning"}`}>{order.payment}</span>
+                <p className="mt-2 mb-1">{order.items.reduce((n, item) => n + item.quantity, 0)} cup(s) · {order.fulfillment}</p>
+                <strong className="d-block mt-2 fs-5">{money(order.totalCentavos)}</strong>
+                <div className="mt-3 fw-semibold" style={{ color: "#b88a35" }}>Tap to view details <i className="bi bi-chevron-right" /></div>
+              </div>
+            </article>
+          )}</div>}
+      </section>;
+    })}
+
+    <section id="previous-pending-orders" className="card-estylo mb-4" aria-label="Pending from Previous Days"
+      style={{ border: previousPending.length ? "2px solid #b88a35" : undefined, scrollMarginTop: 24 }}>
+      <button type="button" className="btn w-100 text-start d-flex align-items-center justify-content-between gap-2"
+        style={{ color: "inherit", minHeight: 56, padding: "8px 0" }}
+        aria-expanded={olderOpen} aria-controls="previous-pending-list"
+        onClick={() => setOlderOpen(value => !value)}>
+        <span><strong className="fs-5">Pending from Previous Days</strong>
+          <span className="badge text-bg-warning ms-2">{previousPending.length}</span>
+          <small className="d-block text-secondary mt-1">Unfinished orders from before today · Philippine time</small>
+        </span>
+        <i className={`bi ${olderOpen ? "bi-chevron-up" : "bi-chevron-down"}`} aria-hidden="true" />
+      </button>
+      {olderOpen && <div id="previous-pending-list">
+        {!previousPending.length ? <p className="empty mt-3">No unfinished orders from previous days.</p> :
+                    <div className="order-grid mt-3">{previousPending.map(order =>
             <article key={order.id} className="card-estylo" role="button" tabIndex={0}
               aria-label={`View details for ${order.customer}, ${money(order.totalCentavos)}`}
               onClick={() => setDetailId(order.id)}
@@ -230,8 +313,8 @@ export function OrdersPage() {
               </div>
             </article>
           )}</div>}
-      </section>;
-    })}
+      </div>}
+    </section>
 
     {detailId && detailOrder && <div className="modal d-block" role="dialog" aria-modal="true"
       aria-labelledby="order-detail-title" style={{ background: "rgba(0,0,0,.7)", zIndex: 1900 }}
@@ -267,7 +350,7 @@ export function OrdersPage() {
           </div>
           <div className="modal-body">
             {cancelRequest.queueNumber != null && <div className="fw-bold text-warning"
-              style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1 }}>
+              style={{ fontSize: "clamp(2.25rem, 5vw, 3.00rem)", lineHeight: 1.1 }}>
               Queue #{String(cancelRequest.queueNumber).padStart(3, "0")}
             </div>}
             <p className="fs-5 fw-semibold mt-2 mb-1">{cancelRequest.customer}</p>

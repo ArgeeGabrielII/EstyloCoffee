@@ -5,6 +5,13 @@ import { RolesGuard } from "./auth/roles.guard";
 import { Roles } from "./common/roles.decorator";
 import { UserRole } from "@prisma/client";
 
+// Philippine time is UTC+08:00 throughout the year (no daylight saving time).
+function manilaTodayStartUtc(now = new Date()): Date {
+  const shifted = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate())
+    - 8 * 60 * 60 * 1000);
+}
+
 @Controller("queue")
 export class QueueController {
   constructor(private p: PrismaService) {}
@@ -12,19 +19,9 @@ export class QueueController {
   @Get("public")
   publicQueue() {
     return this.p.order.findMany({
-      where: {
-        status: { in: ["NEW", "PREPARING", "READY"] },
-      },
-      select: {
-        id: true,
-        customer: true,
-        queueNumber: true,
-        status: true,
-      },
-      orderBy: [
-        { createdAt: "asc" },
-        { id: "asc" },
-      ],
+      where: { status: { in: ["NEW", "PREPARING", "READY"] } },
+      select: { id: true, customer: true, queueNumber: true, status: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
   }
 
@@ -32,31 +29,20 @@ export class QueueController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.CASHIER)
   async staffQueue() {
-    const include = {
-      items: { include: { addons: true } },
-    };
-
-    const [pending, history] = await this.p.$transaction([
-      this.p.order.findMany({
-        where: {
-          status: { in: ["NEW", "PREPARING", "READY"] },
-        },
-        include,
-        orderBy: [
-          { createdAt: "asc" },
-          { id: "asc" },
+    const start = manilaTodayStartUtc();
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    // Return every order created today, plus *all* older unfinished orders.
+    // Older completed/cancelled orders are intentionally excluded from this board.
+    // No take:50 limit: busy days must not silently lose completed/cancelled entries.
+    return this.p.order.findMany({
+      where: {
+        OR: [
+          { createdAt: { gte: start, lt: end } },
+          { createdAt: { lt: start }, status: { in: ["NEW", "PREPARING", "READY"] } },
         ],
-      }),
-      this.p.order.findMany({
-        where: {
-          status: { in: ["COMPLETED", "CANCELLED"] },
-        },
-        include,
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      }),
-    ]);
-
-    return [...pending, ...history];
+      },
+      include: { items: { include: { addons: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
   }
 }
