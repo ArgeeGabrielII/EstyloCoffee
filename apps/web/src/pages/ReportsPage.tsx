@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -22,7 +22,11 @@ ChartJS.register(
 );
 
 type Mode = "daily" | "monthly";
-type Product = { id: string; name: string };
+
+type Product = {
+  id: string;
+  name: string;
+};
 
 type Sale = {
   date: string;
@@ -32,15 +36,34 @@ type Sale = {
   salesCentavos: number;
 };
 
+type AddonSale = {
+  date: string;
+  productId: string;
+  addonId: string;
+  name: string;
+  quantity: number;
+  salesCentavos: number;
+};
+
 type BreakdownReport = {
   products: Product[];
   sales: Sale[];
+  addonSales: AddonSale[];
 };
 
 const MONTHS = [
-  "January", "February", "March", "April",
-  "May", "June", "July", "August",
-  "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 function todayPH() {
@@ -52,13 +75,23 @@ function todayPH() {
   }).formatToParts(new Date());
 
   const get = (type: string) =>
-    Number(parts.find((p) => p.type === type)?.value);
+    Number(parts.find((part) => part.type === type)?.value);
 
   return {
     year: get("year"),
     month: get("month"),
     day: get("day"),
   };
+}
+
+function datePH() {
+  const today = todayPH();
+
+  return [
+    today.year,
+    String(today.month).padStart(2, "0"),
+    String(today.day).padStart(2, "0"),
+  ].join("-");
 }
 
 function colorFor(id: string) {
@@ -73,21 +106,26 @@ function colorFor(id: string) {
   return `hsl(${hue}, 65%, 52%)`;
 }
 
+// --------------------------------------------------
+// Dashboard
+// --------------------------------------------------
+
 function Dashboard() {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const today = todayPH();
-    const date = `${today.year}-${String(today.month).padStart(2, "0")}-${String(today.day).padStart(2, "0")}`;
+    const from = new Date(`${datePH()}T00:00:00+08:00`);
 
-    const from = new Date(`${date}T00:00:00+08:00`);
-
-    api<Report>(`/reports?from=${encodeURIComponent(from.toISOString())}`)
+    api<Report>(
+      `/reports?from=${encodeURIComponent(from.toISOString())}`
+    )
       .then(setReport)
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Unable to load")
-      );
+      .catch((e) => {
+        setError(
+          e instanceof Error ? e.message : "Unable to load"
+        );
+      });
   }, []);
 
   return (
@@ -100,7 +138,9 @@ function Dashboard() {
       </div>
 
       {error && (
-        <div className="alert alert-danger">{error}</div>
+        <div className="alert alert-danger" role="alert">
+          {error}
+        </div>
       )}
 
       <div className="metric-grid mb-4">
@@ -119,10 +159,11 @@ function Dashboard() {
 
       <div className="card-estylo">
         <h5>Order Status Breakdown</h5>
-        {report?.statuses.map((s) => (
-          <div key={s.status} className="report-row">
-            <span>{s.status}</span>
-            <strong>{s._count}</strong>
+
+        {report?.statuses.map((status) => (
+          <div key={status.status} className="report-row">
+            <span>{status.status}</span>
+            <strong>{status._count}</strong>
           </div>
         ))}
       </div>
@@ -130,23 +171,37 @@ function Dashboard() {
   );
 }
 
+// --------------------------------------------------
+// Sales Reports
+// --------------------------------------------------
+
 function SalesReports() {
   const today = todayPH();
 
   const [mode, setMode] = useState<Mode>("daily");
-  // The breakdown date is independent of the chart's daily/monthly period.
-  const [breakdownDate, setBreakdownDate] = useState(() => {
-    const t = todayPH();
-    return `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`;
-  });
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
-  const [report, setReport] = useState<BreakdownReport | null>(null);
-  const [breakdownReport, setBreakdownReport] = useState<BreakdownReport | null>(null);
-  const [breakdownLoading, setBreakdownLoading] = useState(true);
-  const [breakdownError, setBreakdownError] = useState("");
+
+  // The daily breakdown has its own independent date.
+  const [breakdownDate, setBreakdownDate] = useState(datePH);
+
+  const [report, setReport] =
+    useState<BreakdownReport | null>(null);
+
+  const [breakdownReport, setBreakdownReport] =
+    useState<BreakdownReport | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [breakdownLoading, setBreakdownLoading] =
+    useState(true);
+
+  const [breakdownError, setBreakdownError] = useState("");
+
+  // --------------------------------------------------
+  // Fetch Daily/Monthly Chart Data
+  // --------------------------------------------------
 
   useEffect(() => {
     let active = true;
@@ -168,16 +223,22 @@ function SalesReports() {
           `/reports/cups?${params.toString()}`
         );
 
-        if (active) setReport(result);
+        if (active) {
+          setReport(result);
+        }
       } catch (e) {
         if (active) {
           setReport(null);
           setError(
-            e instanceof Error ? e.message : "Unable to load reports"
+            e instanceof Error
+              ? e.message
+              : "Unable to load reports"
           );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
@@ -188,61 +249,195 @@ function SalesReports() {
     };
   }, [mode, year, month]);
 
-  // Fetch only the month containing the breakdown date. The API groups
-  // sales by date; filtering below restricts the table to exactly one day.
+  // --------------------------------------------------
+  // Fetch Data for Selected Breakdown Date
+  // --------------------------------------------------
+
   useEffect(() => {
     let active = true;
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(breakdownDate);
-    if (!match) return;
+
+    const match =
+      /^(\d{4})-(\d{2})-(\d{2})$/.exec(breakdownDate);
+
+    if (!match) {
+      setBreakdownReport(null);
+      setBreakdownLoading(false);
+      return;
+    }
 
     async function loadBreakdown() {
       setBreakdownLoading(true);
       setBreakdownError("");
+
       try {
         const params = new URLSearchParams({
           year: match![1],
           month: String(Number(match![2])),
         });
-        const result = await api<BreakdownReport>(`/reports/cups?${params.toString()}`);
-        if (active) setBreakdownReport(result);
+
+        const result = await api<BreakdownReport>(
+          `/reports/cups?${params.toString()}`
+        );
+
+        if (active) {
+          setBreakdownReport(result);
+        }
       } catch (e) {
         if (active) {
           setBreakdownReport(null);
-          setBreakdownError(e instanceof Error ? e.message : "Unable to load daily sales");
+          setBreakdownError(
+            e instanceof Error
+              ? e.message
+              : "Unable to load daily sales"
+          );
         }
       } finally {
-        if (active) setBreakdownLoading(false);
+        if (active) {
+          setBreakdownLoading(false);
+        }
       }
     }
+
     void loadBreakdown();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, [breakdownDate]);
 
+  // --------------------------------------------------
+  // Selected-Day Coffee Sales
+  // --------------------------------------------------
+
   const breakdownSales = useMemo(
-    () => (breakdownReport?.sales ?? []).filter((sale) => sale.date === breakdownDate),
-    [breakdownReport, breakdownDate],
+    () =>
+      (breakdownReport?.sales ?? []).filter(
+        (sale) => sale.date === breakdownDate
+      ),
+    [breakdownReport, breakdownDate]
   );
 
   const breakdownProductTotals = useMemo(() => {
-    const map = new Map<string, { cups: number; cents: number }>();
+    const map = new Map<
+      string,
+      { cups: number; cents: number }
+    >();
+
     for (const sale of breakdownSales) {
-      const current = map.get(sale.productId) ?? { cups: 0, cents: 0 };
+      const current = map.get(sale.productId) ?? {
+        cups: 0,
+        cents: 0,
+      };
+
       current.cups += sale.quantity;
       current.cents += sale.salesCentavos;
+
       map.set(sale.productId, current);
     }
+
     return map;
   }, [breakdownSales]);
 
-  const breakdownCups = breakdownSales.reduce((sum, sale) => sum + sale.quantity, 0);
-  const breakdownCentavos = breakdownSales.reduce((sum, sale) => sum + sale.salesCentavos, 0);
+  const breakdownCups = breakdownSales.reduce(
+    (sum, sale) => sum + sale.quantity,
+    0
+  );
+
+  const breakdownCentavos = breakdownSales.reduce(
+    (sum, sale) => sum + sale.salesCentavos,
+    0
+  );
+
   const breakdownProducts = breakdownReport?.products ?? [];
+
   const breakdownBestSeller = [...breakdownProducts].sort(
-    (a, b) => (breakdownProductTotals.get(b.id)?.cups ?? 0) - (breakdownProductTotals.get(a.id)?.cups ?? 0),
+    (a, b) =>
+      (breakdownProductTotals.get(b.id)?.cups ?? 0) -
+      (breakdownProductTotals.get(a.id)?.cups ?? 0)
   )[0];
-  const breakdownHighestRevenue = [...breakdownProducts].sort(
-    (a, b) => (breakdownProductTotals.get(b.id)?.cents ?? 0) - (breakdownProductTotals.get(a.id)?.cents ?? 0),
+
+  const breakdownHighestRevenue = [
+    ...breakdownProducts,
+  ].sort(
+    (a, b) =>
+      (breakdownProductTotals.get(b.id)?.cents ?? 0) -
+      (breakdownProductTotals.get(a.id)?.cents ?? 0)
   )[0];
+
+  // --------------------------------------------------
+  // Selected-Day Add-on Sales
+  // --------------------------------------------------
+
+  const dailyAddonSales = useMemo(
+    () =>
+      (breakdownReport?.addonSales ?? []).filter(
+        (addon) => addon.date === breakdownDate
+      ),
+    [breakdownReport, breakdownDate]
+  );
+
+  // Add-ons grouped by the coffee they were sold with.
+  const addonsByCoffee = useMemo(() => {
+    const map = new Map<string, AddonSale[]>();
+
+    for (const addon of dailyAddonSales) {
+      const rows = map.get(addon.productId) ?? [];
+      rows.push(addon);
+      map.set(addon.productId, rows);
+    }
+
+    return map;
+  }, [dailyAddonSales]);
+
+  // Add-ons aggregated across all coffee variants.
+  const addonTotals = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        name: string;
+        quantity: number;
+        cents: number;
+      }
+    >();
+
+    for (const addon of dailyAddonSales) {
+      const current = map.get(addon.addonId) ?? {
+        name: addon.name,
+        quantity: 0,
+        cents: 0,
+      };
+
+      current.quantity += addon.quantity;
+      current.cents += addon.salesCentavos;
+
+      map.set(addon.addonId, current);
+    }
+
+    return Array.from(map.entries())
+      .map(([id, value]) => ({
+        id,
+        ...value,
+      }))
+      .sort(
+        (a, b) =>
+          b.quantity - a.quantity ||
+          a.name.localeCompare(b.name)
+      );
+  }, [dailyAddonSales]);
+
+  const addonQuantity = addonTotals.reduce(
+    (sum, addon) => sum + addon.quantity,
+    0
+  );
+
+  const addonRevenue = addonTotals.reduce(
+    (sum, addon) => sum + addon.cents,
+    0
+  );
+
+  // --------------------------------------------------
+  // Chart Periods
+  // --------------------------------------------------
 
   const periods = useMemo(() => {
     if (mode === "monthly") {
@@ -255,11 +450,15 @@ function SalesReports() {
 
     const days = new Date(year, month, 0).getDate();
 
-    return Array.from({ length: days }, (_, i) => {
-      const day = i + 1;
+    return Array.from({ length: days }, (_, index) => {
+      const day = index + 1;
 
       return {
-        key: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+        key: [
+          year,
+          String(month).padStart(2, "0"),
+          String(day).padStart(2, "0"),
+        ].join("-"),
         label: String(day),
         fullName: `${MONTHS[month - 1]} ${day}`,
       };
@@ -270,11 +469,18 @@ function SalesReports() {
   const sales = report?.sales ?? [];
 
   const aggregated = useMemo(() => {
-    const map = new Map<string, { cups: number; pesos: number }>();
+    const map = new Map<
+      string,
+      { cups: number; pesos: number }
+    >();
 
     for (const sale of sales) {
       const key = `${sale.date}|${sale.productId}`;
-      const previous = map.get(key) ?? { cups: 0, pesos: 0 };
+
+      const previous = map.get(key) ?? {
+        cups: 0,
+        pesos: 0,
+      };
 
       previous.cups += sale.quantity;
       previous.pesos += sale.salesCentavos / 100;
@@ -286,60 +492,54 @@ function SalesReports() {
   }, [sales]);
 
   const totalCups = sales.reduce(
-    (sum, row) => sum + row.quantity, 0
+    (sum, row) => sum + row.quantity,
+    0
   );
 
   const totalSales = sales.reduce(
-    (sum, row) => sum + row.salesCentavos, 0
+    (sum, row) => sum + row.salesCentavos,
+    0
   );
 
   const now = todayPH();
 
   const elapsedPeriods =
     mode === "monthly"
-      ? year < now.year ? 12 : year === now.year ? now.month : 0
-      : year < now.year || (year === now.year && month < now.month)
+      ? year < now.year
+        ? 12
+        : year === now.year
+          ? now.month
+          : 0
+      : year < now.year ||
+          (year === now.year && month < now.month)
         ? periods.length
         : year === now.year && month === now.month
           ? now.day
           : 0;
 
-  const avgCups = elapsedPeriods ? totalCups / elapsedPeriods : 0;
-  const avgSales = elapsedPeriods ? totalSales / elapsedPeriods : 0;
+  const avgCups = elapsedPeriods
+    ? totalCups / elapsedPeriods
+    : 0;
 
-  const productTotals = useMemo(() => {
-    const map = new Map<string, { cups: number; cents: number }>();
+  const avgSales = elapsedPeriods
+    ? totalSales / elapsedPeriods
+    : 0;
 
-    for (const sale of sales) {
-      const entry = map.get(sale.productId) ?? { cups: 0, cents: 0 };
-      entry.cups += sale.quantity;
-      entry.cents += sale.salesCentavos;
-      map.set(sale.productId, entry);
-    }
-
-    return map;
-  }, [sales]);
-
-  const bestSeller = [...products].sort(
-    (a, b) =>
-      (productTotals.get(b.id)?.cups ?? 0) -
-      (productTotals.get(a.id)?.cups ?? 0)
-  )[0];
-
-  const highestRevenue = [...products].sort(
-    (a, b) =>
-      (productTotals.get(b.id)?.cents ?? 0) -
-      (productTotals.get(a.id)?.cents ?? 0)
-  )[0];
+  // --------------------------------------------------
+  // Chart Data
+  // --------------------------------------------------
 
   function chartData(metric: "cups" | "pesos") {
     return {
-      labels: periods.map((p) => p.label),
+      labels: periods.map((period) => period.label),
+
       datasets: products.map((product) => ({
         label: product.name,
         data: periods.map(
           (period) =>
-            aggregated.get(`${period.key}|${product.id}`)?.[metric] ?? 0
+            aggregated.get(
+              `${period.key}|${product.id}`
+            )?.[metric] ?? 0
         ),
         backgroundColor: colorFor(product.id),
         borderWidth: 0,
@@ -349,28 +549,45 @@ function SalesReports() {
     };
   }
 
-  function chartOptions(metric: "cups" | "pesos"): ChartOptions<"bar"> {
+  function chartOptions(
+    metric: "cups" | "pesos"
+  ): ChartOptions<"bar"> {
     return {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: false,
+        },
         tooltip: {
-          filter: (item) => Number(item.parsed.y) > 0,
+          filter: (item) =>
+            Number(item.parsed.y) > 0,
+
           callbacks: {
             title: (items) =>
               periods[items[0]?.dataIndex]?.fullName ?? "",
+
             label: (item) => {
               const n = Number(item.parsed.y ?? 0);
+
               return `${item.dataset.label}: ${
-                metric === "cups" ? `${n} cups` : money(Math.round(n * 100))
+                metric === "cups"
+                  ? `${n} cups`
+                  : money(Math.round(n * 100))
               }`;
             },
+
             footer: (items) => {
               const total = items.reduce(
-                (sum, item) => sum + Number(item.parsed.y ?? 0), 0
+                (sum, item) =>
+                  sum + Number(item.parsed.y ?? 0),
+                0
               );
+
               return `Total: ${
                 metric === "cups"
                   ? `${total} cups`
@@ -383,21 +600,33 @@ function SalesReports() {
       scales: {
         x: {
           stacked: true,
-          grid: { display: false },
-          ticks: { autoSkip: false, maxRotation: 0 },
+          grid: {
+            display: false,
+          },
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+          },
         },
         y: {
           stacked: true,
           beginAtZero: true,
           ticks: {
-            precision: metric === "cups" ? 0 : undefined,
-            stepSize: metric === "cups" ? 1 : undefined,
+            precision:
+              metric === "cups" ? 0 : undefined,
+            stepSize:
+              metric === "cups" ? 1 : undefined,
             callback: (value) =>
-              metric === "pesos" ? `₱${Number(value).toLocaleString()}` : String(value),
+              metric === "pesos"
+                ? `₱${Number(value).toLocaleString()}`
+                : String(value),
           },
           title: {
             display: true,
-            text: metric === "cups" ? "Cups Sold" : "Sales (PHP)",
+            text:
+              metric === "cups"
+                ? "Cups Sold"
+                : "Sales (PHP)",
           },
         },
       },
@@ -406,11 +635,16 @@ function SalesReports() {
 
   function navigate(delta: number) {
     if (mode === "monthly") {
-      setYear((y) => y + delta);
+      setYear((current) => current + delta);
       return;
     }
 
-    const next = new Date(year, month - 1 + delta, 1);
+    const next = new Date(
+      year,
+      month - 1 + delta,
+      1
+    );
+
     setYear(next.getFullYear());
     setMonth(next.getMonth() + 1);
   }
@@ -426,18 +660,24 @@ function SalesReports() {
         <div className="d-flex justify-content-between flex-wrap gap-2 mb-3">
           <div>
             <h4>{title}</h4>
-            <p className="muted mb-0">{description}</p>
+            <p className="muted mb-0">
+              {description}
+            </p>
           </div>
+
           <strong>{total}</strong>
         </div>
 
         {loading ? (
-          <p className="text-center py-5">Loading chart...</p>
+          <p className="text-center py-5">
+            Loading chart...
+          </p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <div
               style={{
-                minWidth: mode === "daily" ? 980 : 600,
+                minWidth:
+                  mode === "daily" ? 980 : 600,
                 height: 420,
               }}
             >
@@ -452,14 +692,23 @@ function SalesReports() {
     );
   }
 
+  // --------------------------------------------------
+  // Page
+  // --------------------------------------------------
+
   return (
     <div className="page">
       <div className="page-title">
         <div>
           <h1>Reports</h1>
-          <p>Coffee sales analytics · Philippine Time</p>
+          <p>
+            Coffee and add-on sales analytics ·
+            Philippine Time
+          </p>
         </div>
       </div>
+
+      {/* Report period controls */}
 
       <div className="card-estylo mb-4">
         <div className="d-flex flex-wrap align-items-end gap-3">
@@ -467,17 +716,27 @@ function SalesReports() {
             <label className="form-label fw-semibold">
               Report Period
             </label>
+
             <div className="btn-group d-flex">
               <button
                 type="button"
-                className={`btn ${mode === "daily" ? "btn-dark" : "btn-outline-secondary"}`}
+                className={`btn ${
+                  mode === "daily"
+                    ? "btn-dark"
+                    : "btn-outline-secondary"
+                }`}
                 onClick={() => setMode("daily")}
               >
                 Daily
               </button>
+
               <button
                 type="button"
-                className={`btn ${mode === "monthly" ? "btn-dark" : "btn-outline-secondary"}`}
+                className={`btn ${
+                  mode === "monthly"
+                    ? "btn-dark"
+                    : "btn-outline-secondary"
+                }`}
                 onClick={() => setMode("monthly")}
               >
                 Monthly
@@ -487,28 +746,43 @@ function SalesReports() {
 
           {mode === "daily" && (
             <div>
-              <label className="form-label fw-semibold">Month</label>
+              <label className="form-label fw-semibold">
+                Month
+              </label>
+
               <select
                 className="form-select"
                 value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
+                onChange={(e) =>
+                  setMonth(Number(e.target.value))
+                }
               >
-                {MONTHS.map((name, i) => (
-                  <option key={name} value={i + 1}>{name}</option>
+                {MONTHS.map((name, index) => (
+                  <option
+                    key={name}
+                    value={index + 1}
+                  >
+                    {name}
+                  </option>
                 ))}
               </select>
             </div>
           )}
 
           <div>
-            <label className="form-label fw-semibold">Year</label>
+            <label className="form-label fw-semibold">
+              Year
+            </label>
+
             <input
               className="form-control"
               type="number"
               min={2000}
               max={2100}
               value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+              onChange={(e) =>
+                setYear(Number(e.target.value))
+              }
               style={{ width: 120 }}
             />
           </div>
@@ -520,6 +794,7 @@ function SalesReports() {
           >
             Previous
           </button>
+
           <button
             type="button"
             className="btn btn-outline-secondary"
@@ -527,13 +802,14 @@ function SalesReports() {
           >
             Next
           </button>
+
           <button
             type="button"
             className="btn btn-outline-secondary"
             onClick={() => {
-              const t = todayPH();
-              setYear(t.year);
-              setMonth(t.month);
+              const current = todayPH();
+              setYear(current.year);
+              setMonth(current.month);
             }}
           >
             Current Period
@@ -542,19 +818,39 @@ function SalesReports() {
       </div>
 
       {error && (
-        <div className="alert alert-danger" role="alert">{error}</div>
+        <div
+          className="alert alert-danger"
+          role="alert"
+        >
+          {error}
+        </div>
       )}
+
+      {/* Sales summary */}
 
       <div className="metric-grid mb-4">
         {[
-          ["Total Cups Sold", totalCups.toLocaleString()],
+          [
+            "Total Cups Sold",
+            totalCups.toLocaleString(),
+          ],
           ["Total Sales", money(totalSales)],
           ["Average Cups", avgCups.toFixed(1)],
-          ["Average Sales", money(Math.round(avgSales))],
+          [
+            "Average Sales",
+            money(Math.round(avgSales)),
+          ],
         ].map(([label, value]) => (
-          <div className="card-estylo" key={label}>
-            <div className="metric-label">{label}</div>
-            <div className="metric-value">{value}</div>
+          <div
+            className="card-estylo"
+            key={label}
+          >
+            <div className="metric-label">
+              {label}
+            </div>
+            <div className="metric-value">
+              {value}
+            </div>
           </div>
         ))}
       </div>
@@ -573,29 +869,45 @@ function SalesReports() {
         money(totalSales)
       )}
 
+      {/* Coffee Sales Breakdown */}
+
       <div className="card-estylo mb-4">
         <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
           <div>
-            <h4 className="mb-1">Coffee Sales Breakdown</h4>
-            <p className="muted mb-0">Sales for one selected day (Philippine Time)</p>
+            <h4 className="mb-1">
+              Coffee Sales Breakdown
+            </h4>
+            <p className="muted mb-0">
+              Coffee and add-on sales for one selected day
+              (Philippine Time)
+            </p>
           </div>
+
           <div>
-            <label className="form-label fw-semibold" htmlFor="breakdown-date">Sales date</label>
+            <label
+              className="form-label fw-semibold"
+              htmlFor="breakdown-date"
+            >
+              Sales date
+            </label>
+
             <div className="d-flex flex-wrap gap-2">
               <input
                 id="breakdown-date"
                 type="date"
                 className="form-control"
                 value={breakdownDate}
-                onChange={(e) => setBreakdownDate(e.target.value)}
+                onChange={(e) =>
+                  setBreakdownDate(e.target.value)
+                }
               />
+
               <button
                 type="button"
                 className="btn btn-outline-secondary"
-                onClick={() => {
-                  const t = todayPH();
-                  setBreakdownDate(`${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`);
-                }}
+                onClick={() =>
+                  setBreakdownDate(datePH())
+                }
               >
                 Today
               </button>
@@ -603,70 +915,258 @@ function SalesReports() {
           </div>
         </div>
 
-        {breakdownError && <div className="alert alert-danger" role="alert">{breakdownError}</div>}
+        {breakdownError && (
+          <div
+            className="alert alert-danger"
+            role="alert"
+          >
+            {breakdownError}
+          </div>
+        )}
+
         {breakdownLoading ? (
-          <p>Loading daily sales…</p>
+          <p>Loading daily sales...</p>
         ) : !breakdownReport ? (
-          <p className="empty">Daily sales are unavailable.</p>
+          <p className="empty">
+            Daily sales are unavailable.
+          </p>
         ) : (
           <>
             <div className="table-responsive">
               <table className="table align-middle">
                 <thead>
                   <tr>
-                    <th>Coffee</th>
-                    <th className="text-end">Cups Sold</th>
-                    <th className="text-end">Sales</th>
+                    <th>Coffee / Add-on</th>
+                    <th className="text-end">
+                      Cups / Qty
+                    </th>
+                    <th className="text-end">
+                      Sales
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {breakdownProducts.map((product) => {
-                    const totals = breakdownProductTotals.get(product.id);
+                    const totals =
+                      breakdownProductTotals.get(
+                        product.id
+                      );
+
+                    const coffeeAddons =
+                      addonsByCoffee.get(product.id) ?? [];
+
                     return (
-                      <tr key={product.id}>
-                        <td>
-                          <span style={{
-                            display: "inline-block", width: 12, height: 12,
-                            marginRight: 8, borderRadius: 3,
-                            background: colorFor(product.id),
-                          }} />
-                          {product.name}
-                        </td>
-                        <td className="text-end">{totals?.cups ?? 0}</td>
-                        <td className="text-end">{money(totals?.cents ?? 0)}</td>
-                      </tr>
+                      <Fragment key={product.id}>
+                        <tr>
+                          <td>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                width: 12,
+                                height: 12,
+                                marginRight: 8,
+                                borderRadius: 3,
+                                background: colorFor(
+                                  product.id
+                                ),
+                              }}
+                            />
+                            {product.name}
+                          </td>
+
+                          <td className="text-end">
+                            {totals?.cups ?? 0}
+                          </td>
+
+                          <td className="text-end">
+                            {money(totals?.cents ?? 0)}
+                          </td>
+                        </tr>
+
+                        {coffeeAddons.map((addon) => (
+                          <tr
+                            key={`${product.id}-${addon.addonId}`}
+                            className="text-muted"
+                          >
+                            <td className="ps-4">
+                              ↳ {addon.name}{" "}
+                              <small>(add-on)</small>
+                            </td>
+
+                            <td className="text-end">
+                              {addon.quantity}
+                            </td>
+
+                            <td className="text-end">
+                              {money(
+                                addon.salesCentavos
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     );
                   })}
                 </tbody>
+
                 <tfoot>
                   <tr className="fw-bold">
                     <td>Total</td>
-                    <td className="text-end">{breakdownCups}</td>
-                    <td className="text-end">{money(breakdownCentavos)}</td>
+
+                    <td className="text-end">
+                      {breakdownCups} cups
+                    </td>
+
+                    <td className="text-end">
+                      {money(breakdownCentavos)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
+
+            <p className="muted">
+              Coffee sales include paid add-ons.
+              The indented add-on rows are included
+              in their parent coffee totals.
+            </p>
+
             <div className="mt-3">
               <p>
-                <strong>Best-selling coffee:</strong>{" "}
-                {breakdownBestSeller && (breakdownProductTotals.get(breakdownBestSeller.id)?.cups ?? 0) > 0
-                  ? breakdownBestSeller.name : "No sales yet"}
+                <strong>
+                  Best-selling coffee:
+                </strong>{" "}
+                {breakdownBestSeller &&
+                (breakdownProductTotals.get(
+                  breakdownBestSeller.id
+                )?.cups ?? 0) > 0
+                  ? breakdownBestSeller.name
+                  : "No sales yet"}
               </p>
+
               <p className="mb-0">
-                <strong>Highest revenue coffee:</strong>{" "}
-                {breakdownHighestRevenue && (breakdownProductTotals.get(breakdownHighestRevenue.id)?.cents ?? 0) > 0
-                  ? breakdownHighestRevenue.name : "No sales yet"}
+                <strong>
+                  Highest revenue coffee:
+                </strong>{" "}
+                {breakdownHighestRevenue &&
+                (breakdownProductTotals.get(
+                  breakdownHighestRevenue.id
+                )?.cents ?? 0) > 0
+                  ? breakdownHighestRevenue.name
+                  : "No sales yet"}
               </p>
             </div>
           </>
         )}
       </div>
 
+      {/* Add-on Sales Breakdown */}
+
+      <div className="card-estylo mb-4">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <div>
+            <h4 className="mb-1">
+              Add-on Sales Breakdown
+            </h4>
+
+            <p className="muted mb-0">
+              Sales for {breakdownDate} (Philippine Time)
+            </p>
+          </div>
+
+          <strong>
+            {addonQuantity} add-ons ·{" "}
+            {money(addonRevenue)}
+          </strong>
+        </div>
+
+        {breakdownLoading ? (
+          <p>Loading add-on sales...</p>
+        ) : breakdownError ? (
+          <div
+            className="alert alert-danger"
+            role="alert"
+          >
+            {breakdownError}
+          </div>
+        ) : !breakdownReport ? (
+          <p className="empty">
+            Add-on sales are unavailable.
+          </p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table align-middle">
+              <thead>
+                <tr>
+                  <th>Add-on</th>
+                  <th className="text-end">
+                    Quantity Sold
+                  </th>
+                  <th className="text-end">
+                    Sales
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {addonTotals.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="text-center text-muted"
+                    >
+                      No add-ons sold on this date.
+                    </td>
+                  </tr>
+                ) : (
+                  addonTotals.map((addon) => (
+                    <tr key={addon.id}>
+                      <td>{addon.name}</td>
+
+                      <td className="text-end">
+                        {addon.quantity}
+                      </td>
+
+                      <td className="text-end">
+                        {money(addon.cents)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+
+              <tfoot>
+                <tr className="fw-bold">
+                  <td>Total</td>
+
+                  <td className="text-end">
+                    {addonQuantity}
+                  </td>
+
+                  <td className="text-end">
+                    {money(addonRevenue)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        <p className="muted mb-0">
+          Add-on revenue is already included in
+          coffee sales. Do not add these totals
+          together.
+        </p>
+      </div>
+
       <p className="muted">
-        Reports include paid, non-cancelled orders. Sales are calculated
-        from recorded order-item prices and add-ons. Dates without sales,
-        including future dates, appear with zero values.
+        Reports include paid, non-cancelled orders.
+        Sales use recorded order-item prices and
+        add-on prices. Free Drinks have zero base-drink
+        revenue, but their paid add-ons are included.
+        Dates without sales, including future dates,
+        show zero values.
       </p>
     </div>
   );
@@ -677,5 +1177,7 @@ export function ReportsPage({
 }: {
   dashboard?: boolean;
 }) {
-  return dashboard ? <Dashboard /> : <SalesReports />;
+  return dashboard
+    ? <Dashboard />
+    : <SalesReports />;
 }

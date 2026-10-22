@@ -12,6 +12,23 @@ import { AuthGuard } from "./auth/auth.guard";
 import { RolesGuard } from "./auth/roles.guard";
 import { Roles } from "./common/roles.decorator";
 
+type SaleRow = {
+  date: string;
+  productId: string;
+  name: string;
+  quantity: number;
+  salesCentavos: number;
+};
+
+type AddonSaleRow = {
+  date: string;
+  productId: string;
+  addonId: string;
+  name: string;
+  quantity: number;
+  salesCentavos: number;
+};
+
 @Controller("reports/cups")
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
@@ -25,9 +42,7 @@ export class CupsReportController {
   ) {
     const year = Number(yearParam);
     const month =
-      monthParam === undefined
-        ? undefined
-        : Number(monthParam);
+      monthParam === undefined ? undefined : Number(monthParam);
 
     if (
       !yearParam ||
@@ -47,7 +62,6 @@ export class CupsReportController {
 
     const startMonth = month ?? 1;
     const endMonth = month ?? 12;
-
     const offsetMs = 8 * 60 * 60 * 1000;
 
     const start = new Date(
@@ -58,9 +72,7 @@ export class CupsReportController {
       Date.UTC(year, endMonth, 1) - offsetMs
     );
 
-    // Exclusive upper bound: first day of the next month.
-    // Date.UTC normalizes month 12 to January of the next year.
-
+    // Philippine Time, with an exclusive end boundary.
     const [products, orders] = await Promise.all([
       this.prisma.product.findMany({
         select: {
@@ -86,8 +98,11 @@ export class CupsReportController {
               name: true,
               quantity: true,
               unitPriceCentavos: true,
+              freeDrink: true,
               addons: {
                 select: {
+                  addonId: true,
+                  name: true,
                   quantity: true,
                   unitPriceCentavos: true,
                 },
@@ -105,17 +120,11 @@ export class CupsReportController {
       day: "2-digit",
     });
 
-    type SaleRow = {
-      date: string;
-      productId: string;
-      name: string;
-      quantity: number;
-      salesCentavos: number;
-    };
+    const coffeeTotals = new Map<string, SaleRow>();
+    const addonTotals = new Map<string, AddonSaleRow>();
 
-    const totals = new Map<string, SaleRow>();
     const productNames = new Map<string, string>(
-      products.map((p) => [p.id, p.name])
+      products.map((product) => [product.id, product.name])
     );
 
     for (const order of orders) {
@@ -134,25 +143,29 @@ export class CupsReportController {
         month === undefined ? date.slice(0, 7) : date;
 
       for (const item of order.items) {
-        const addOnPerCup = item.addons.reduce(
+        const addonPerCup = item.addons.reduce(
           (sum, addon) =>
             sum + addon.quantity * addon.unitPriceCentavos,
           0
         );
 
+        // Free base drinks contribute zero base revenue.
+        // Their paid add-ons still count as sales.
+        const basePrice = item.freeDrink
+          ? 0
+          : item.unitPriceCentavos;
+
         const salesCentavos =
-          item.quantity *
-          (item.unitPriceCentavos + addOnPerCup);
+          item.quantity * (basePrice + addonPerCup);
 
-        const key = `${period}|${item.productId}`;
+        const coffeeKey = `${period}|${item.productId}`;
+        const existingCoffee = coffeeTotals.get(coffeeKey);
 
-        const previous = totals.get(key);
-
-        if (previous) {
-          previous.quantity += item.quantity;
-          previous.salesCentavos += salesCentavos;
+        if (existingCoffee) {
+          existingCoffee.quantity += item.quantity;
+          existingCoffee.salesCentavos += salesCentavos;
         } else {
-          totals.set(key, {
+          coffeeTotals.set(coffeeKey, {
             date: period,
             productId: item.productId,
             name: item.name,
@@ -161,9 +174,36 @@ export class CupsReportController {
           });
         }
 
-        // Preserve products that may no longer be active.
+        // Retain historical coffee names for products
+        // that are no longer in the active catalog.
         if (!productNames.has(item.productId)) {
           productNames.set(item.productId, item.name);
+        }
+
+        for (const addon of item.addons) {
+          // Add-on quantities are recorded per cup.
+          const quantity = addon.quantity * item.quantity;
+          const addonRevenue =
+            quantity * addon.unitPriceCentavos;
+
+          const addonKey =
+            `${period}|${item.productId}|${addon.addonId}`;
+
+          const existingAddon = addonTotals.get(addonKey);
+
+          if (existingAddon) {
+            existingAddon.quantity += quantity;
+            existingAddon.salesCentavos += addonRevenue;
+          } else {
+            addonTotals.set(addonKey, {
+              date: period,
+              productId: item.productId,
+              addonId: addon.addonId,
+              name: addon.name,
+              quantity,
+              salesCentavos: addonRevenue,
+            });
+          }
         }
       }
     }
@@ -171,13 +211,25 @@ export class CupsReportController {
     return {
       year,
       month: month ?? null,
-      products: Array.from(productNames, ([id, name]) => ({
-        id,
-        name,
-      })).sort((a, b) => a.name.localeCompare(b.name)),
-      sales: Array.from(totals.values()).sort(
+
+      products: Array.from(
+        productNames,
+        ([id, name]) => ({ id, name })
+      ).sort((a, b) => a.name.localeCompare(b.name)),
+
+      // Coffee sales already include their paid add-ons.
+      sales: Array.from(coffeeTotals.values()).sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||
+          a.name.localeCompare(b.name)
+      ),
+
+      // Separate add-on details for reporting.
+      // Do not add these amounts to coffee sales again.
+      addonSales: Array.from(addonTotals.values()).sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          a.productId.localeCompare(b.productId) ||
           a.name.localeCompare(b.name)
       ),
     };
