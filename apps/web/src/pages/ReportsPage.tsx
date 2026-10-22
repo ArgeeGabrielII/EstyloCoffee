@@ -134,9 +134,17 @@ function SalesReports() {
   const today = todayPH();
 
   const [mode, setMode] = useState<Mode>("daily");
+  // The breakdown date is independent of the chart's daily/monthly period.
+  const [breakdownDate, setBreakdownDate] = useState(() => {
+    const t = todayPH();
+    return `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`;
+  });
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
   const [report, setReport] = useState<BreakdownReport | null>(null);
+  const [breakdownReport, setBreakdownReport] = useState<BreakdownReport | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(true);
+  const [breakdownError, setBreakdownError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -179,6 +187,62 @@ function SalesReports() {
       active = false;
     };
   }, [mode, year, month]);
+
+  // Fetch only the month containing the breakdown date. The API groups
+  // sales by date; filtering below restricts the table to exactly one day.
+  useEffect(() => {
+    let active = true;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(breakdownDate);
+    if (!match) return;
+
+    async function loadBreakdown() {
+      setBreakdownLoading(true);
+      setBreakdownError("");
+      try {
+        const params = new URLSearchParams({
+          year: match![1],
+          month: String(Number(match![2])),
+        });
+        const result = await api<BreakdownReport>(`/reports/cups?${params.toString()}`);
+        if (active) setBreakdownReport(result);
+      } catch (e) {
+        if (active) {
+          setBreakdownReport(null);
+          setBreakdownError(e instanceof Error ? e.message : "Unable to load daily sales");
+        }
+      } finally {
+        if (active) setBreakdownLoading(false);
+      }
+    }
+    void loadBreakdown();
+    return () => { active = false; };
+  }, [breakdownDate]);
+
+  const breakdownSales = useMemo(
+    () => (breakdownReport?.sales ?? []).filter((sale) => sale.date === breakdownDate),
+    [breakdownReport, breakdownDate],
+  );
+
+  const breakdownProductTotals = useMemo(() => {
+    const map = new Map<string, { cups: number; cents: number }>();
+    for (const sale of breakdownSales) {
+      const current = map.get(sale.productId) ?? { cups: 0, cents: 0 };
+      current.cups += sale.quantity;
+      current.cents += sale.salesCentavos;
+      map.set(sale.productId, current);
+    }
+    return map;
+  }, [breakdownSales]);
+
+  const breakdownCups = breakdownSales.reduce((sum, sale) => sum + sale.quantity, 0);
+  const breakdownCentavos = breakdownSales.reduce((sum, sale) => sum + sale.salesCentavos, 0);
+  const breakdownProducts = breakdownReport?.products ?? [];
+  const breakdownBestSeller = [...breakdownProducts].sort(
+    (a, b) => (breakdownProductTotals.get(b.id)?.cups ?? 0) - (breakdownProductTotals.get(a.id)?.cups ?? 0),
+  )[0];
+  const breakdownHighestRevenue = [...breakdownProducts].sort(
+    (a, b) => (breakdownProductTotals.get(b.id)?.cents ?? 0) - (breakdownProductTotals.get(a.id)?.cents ?? 0),
+  )[0];
 
   const periods = useMemo(() => {
     if (mode === "monthly") {
@@ -510,71 +574,93 @@ function SalesReports() {
       )}
 
       <div className="card-estylo mb-4">
-        <h4 className="mb-3">Coffee Sales Breakdown</h4>
+        <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <h4 className="mb-1">Coffee Sales Breakdown</h4>
+            <p className="muted mb-0">Sales for one selected day (Philippine Time)</p>
+          </div>
+          <div>
+            <label className="form-label fw-semibold" htmlFor="breakdown-date">Sales date</label>
+            <div className="d-flex flex-wrap gap-2">
+              <input
+                id="breakdown-date"
+                type="date"
+                className="form-control"
+                value={breakdownDate}
+                onChange={(e) => setBreakdownDate(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={() => {
+                  const t = todayPH();
+                  setBreakdownDate(`${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`);
+                }}
+              >
+                Today
+              </button>
+            </div>
+          </div>
+        </div>
 
-        <div className="table-responsive">
-          <table className="table align-middle">
-            <thead>
-              <tr>
-                <th>Coffee</th>
-                <th className="text-end">Cups Sold</th>
-                <th className="text-end">Sales</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => {
-                const totals = productTotals.get(product.id);
-
-                return (
-                  <tr key={product.id}>
-                    <td>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 12,
-                          height: 12,
-                          marginRight: 8,
-                          borderRadius: 3,
-                          background: colorFor(product.id),
-                        }}
-                      />
-                      {product.name}
-                    </td>
-                    <td className="text-end">
-                      {totals?.cups ?? 0}
-                    </td>
-                    <td className="text-end">
-                      {money(totals?.cents ?? 0)}
-                    </td>
+        {breakdownError && <div className="alert alert-danger" role="alert">{breakdownError}</div>}
+        {breakdownLoading ? (
+          <p>Loading daily sales…</p>
+        ) : !breakdownReport ? (
+          <p className="empty">Daily sales are unavailable.</p>
+        ) : (
+          <>
+            <div className="table-responsive">
+              <table className="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Coffee</th>
+                    <th className="text-end">Cups Sold</th>
+                    <th className="text-end">Sales</th>
                   </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="fw-bold">
-                <td>Total</td>
-                <td className="text-end">{totalCups}</td>
-                <td className="text-end">{money(totalSales)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div className="mt-3">
-          <p>
-            <strong>Best-selling coffee:</strong>{" "}
-            {bestSeller && (productTotals.get(bestSeller.id)?.cups ?? 0) > 0
-              ? bestSeller.name
-              : "No sales yet"}
-          </p>
-          <p className="mb-0">
-            <strong>Highest revenue coffee:</strong>{" "}
-            {highestRevenue &&
-            (productTotals.get(highestRevenue.id)?.cents ?? 0) > 0
-              ? highestRevenue.name
-              : "No sales yet"}
-          </p>
-        </div>
+                </thead>
+                <tbody>
+                  {breakdownProducts.map((product) => {
+                    const totals = breakdownProductTotals.get(product.id);
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <span style={{
+                            display: "inline-block", width: 12, height: 12,
+                            marginRight: 8, borderRadius: 3,
+                            background: colorFor(product.id),
+                          }} />
+                          {product.name}
+                        </td>
+                        <td className="text-end">{totals?.cups ?? 0}</td>
+                        <td className="text-end">{money(totals?.cents ?? 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="fw-bold">
+                    <td>Total</td>
+                    <td className="text-end">{breakdownCups}</td>
+                    <td className="text-end">{money(breakdownCentavos)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div className="mt-3">
+              <p>
+                <strong>Best-selling coffee:</strong>{" "}
+                {breakdownBestSeller && (breakdownProductTotals.get(breakdownBestSeller.id)?.cups ?? 0) > 0
+                  ? breakdownBestSeller.name : "No sales yet"}
+              </p>
+              <p className="mb-0">
+                <strong>Highest revenue coffee:</strong>{" "}
+                {breakdownHighestRevenue && (breakdownProductTotals.get(breakdownHighestRevenue.id)?.cents ?? 0) > 0
+                  ? breakdownHighestRevenue.name : "No sales yet"}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       <p className="muted">
