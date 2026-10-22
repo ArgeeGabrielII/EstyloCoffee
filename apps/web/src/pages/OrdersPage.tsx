@@ -13,7 +13,7 @@ const groups: { status: Status; label: string; color: string }[] = [
   { status: "CANCELLED", label: "Cancelled", color: "#ef8f8f" },
 ];
 const nextSteps: Record<Status, Status[]> = {
-  NEW: ["PREPARING", "CANCELLED"],
+  NEW: ["PREPARING"],
   PREPARING: ["READY", "CANCELLED"],
   READY: ["COMPLETED"],
   COMPLETED: [],
@@ -35,6 +35,7 @@ export function OrdersPage() {
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [cancelRequest, setCancelRequest] = useState<Order | null>(null);
   const [selectedMethod, setSelectedMethod] = useState("");
   const [methodError, setMethodError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,16 +49,17 @@ export function OrdersPage() {
       .catch(e => setMethodError(e instanceof Error ? e.message : "Unable to load payment methods"));
   }, [revision]);
   useEffect(() => {
-    if (!detailId && !paymentOrder) return;
+    if (!detailId && !paymentOrder && !cancelRequest) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busy) {
-        if (paymentOrder) setPaymentOrder(null);
+        if (cancelRequest) setCancelRequest(null);
+        else if (paymentOrder) setPaymentOrder(null);
         else setDetailId(null);
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [detailId, paymentOrder, busy]);
+  }, [detailId, paymentOrder, cancelRequest, busy]);
 
   function openPayment(order: Order) {
     setSelectedMethod("");
@@ -78,7 +80,7 @@ export function OrdersPage() {
       setMethodError(e instanceof Error ? e.message : "Payment could not be saved");
     } finally { setBusy(false); }
   }
-  async function update(order: Order, patch: object) {
+  async function update(order: Order, patch: { status?: Status; payment?: "PAID" | "UNPAID" }) {
     if (busy) return;
     setBusy(true);
     setActionError("");
@@ -89,20 +91,36 @@ export function OrdersPage() {
       setActionError(e instanceof Error ? e.message : "Unable to update order.");
     } finally { setBusy(false); }
   }
-  async function voidOrder(order: Order) {
+  function requestCancellation(order: Order) {
     if (busy || order.status !== "NEW") return;
-    const warning = order.payment === "PAID"
-      ? "This removes the transaction from sales reports but does NOT refund the customer.\n\n" : "";
-    if (!window.confirm(`Void transaction ${order.id.slice(0, 8)} for ${money(order.totalCentavos)}?\n\n` +
-      warning + "This action cannot be undone.")) return;
+    setActionError("");
+    setCancelRequest(order);
+  }
+  async function confirmCancellation() {
+    if (!cancelRequest || busy) return;
+    const order = cancelRequest;
+    if (order.status !== "NEW") {
+      setActionError("Only new orders can be cancelled or voided.");
+      setCancelRequest(null);
+      return;
+    }
     setBusy(true);
     setActionError("");
     try {
-      await api("/orders/" + order.id + "/void", { method: "POST" });
+      // Paid orders use the void endpoint; unpaid orders use the normal cancel transition.
+      // The API enforces NEW-only cancellation/voiding independently of this UI.
+      if (order.payment === "PAID") {
+        await api("/orders/" + order.id + "/void", { method: "POST" });
+      } else {
+        await api("/orders/" + order.id, {
+          method: "PATCH", body: JSON.stringify({ status: "CANCELLED" }),
+        });
+      }
+      setCancelRequest(null);
       setDetailId(null);
       setRevision(n => n + 1);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Unable to void transaction.");
+      setActionError(e instanceof Error ? e.message : "Unable to cancel order.");
     } finally { setBusy(false); }
   }
   function actions(order: Order) {
@@ -118,7 +136,7 @@ export function OrdersPage() {
           onClick={() => update(order, { status })}>{actionLabels[status]}</button>)}
       {order.status === "NEW" &&
         <button type="button" className="btn btn-danger fw-semibold" style={{ minHeight: 48 }}
-          disabled={busy} onClick={() => voidOrder(order)}>Void Transaction</button>}
+          disabled={busy} onClick={() => requestCancellation(order)}>{order.payment === "PAID" ? "Void Transaction" : "Cancel Order"}</button>}
     </div>;
   }
   function orderDetails(order: Order) {
@@ -231,6 +249,46 @@ export function OrdersPage() {
           </div>
           <div className="modal-footer"><button type="button" className="btn btn-outline-secondary"
             style={{ minHeight: 48 }} disabled={busy} onClick={() => setDetailId(null)}>Close</button></div>
+        </div>
+      </div>
+    </div>}
+
+    {cancelRequest && <div className="modal d-block" role="dialog" aria-modal="true"
+      aria-labelledby="cancel-confirm-title" style={{ background: "rgba(0,0,0,.78)", zIndex: 2100 }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) setCancelRequest(null); }}>
+      <div className="modal-dialog modal-dialog-centered">
+        <div className="modal-content" style={{ borderRadius: 16 }}>
+          <div className="modal-header">
+            <h2 className="modal-title h4" id="cancel-confirm-title">
+              {cancelRequest.payment === "PAID" ? "Confirm Void Transaction" : "Confirm Cancel Order"}
+            </h2>
+            <button type="button" className="btn-close" aria-label="Close" disabled={busy}
+              onClick={() => setCancelRequest(null)} />
+          </div>
+          <div className="modal-body">
+            {cancelRequest.queueNumber != null && <div className="fw-bold text-warning"
+              style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1 }}>
+              Queue #{String(cancelRequest.queueNumber).padStart(3, "0")}
+            </div>}
+            <p className="fs-5 fw-semibold mt-2 mb-1">{cancelRequest.customer}</p>
+            <p className="fs-3 fw-bold mb-3">{money(cancelRequest.totalCentavos)}</p>
+            <div className="alert alert-warning" role="alert">
+              Are you sure you want to {cancelRequest.payment === "PAID" ? "void this transaction" : "cancel this order"}?
+              <strong className="d-block mt-1">This action cannot be undone.</strong>
+            </div>
+            {cancelRequest.payment === "PAID" && <div className="alert alert-danger" role="alert">
+              This action does not refund the customer. Handle any refund separately.
+            </div>}
+            {actionError && <div className="alert alert-danger" role="alert">{actionError}</div>}
+          </div>
+          <div className="modal-footer d-flex gap-2">
+            <button type="button" className="btn btn-outline-secondary fw-semibold" style={{ minHeight: 52 }}
+              disabled={busy} onClick={() => setCancelRequest(null)}>Keep Order</button>
+            <button type="button" className="btn btn-danger fw-bold" style={{ minHeight: 52 }}
+              disabled={busy} onClick={confirmCancellation}>
+              {busy ? "Processing…" : cancelRequest.payment === "PAID" ? "Yes, Void Transaction" : "Yes, Cancel Order"}
+            </button>
+          </div>
         </div>
       </div>
     </div>}
