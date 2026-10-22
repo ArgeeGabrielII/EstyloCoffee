@@ -24,6 +24,8 @@ export type Order = {
   source: string;
   status: Status;
   payment: "PAID" | "UNPAID";
+  paymentMethodName?: string | null;
+  paidAt?: string | null;
   totalCentavos: number;
   createdAt: string;
   items: {
