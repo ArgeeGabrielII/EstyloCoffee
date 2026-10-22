@@ -12,12 +12,7 @@ export type Product = {
   active: boolean;
 };
 
-export type Status =
-  | "NEW"
-  | "PREPARING"
-  | "READY"
-  | "COMPLETED"
-  | "CANCELLED";
+export type Status = "NEW" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED";
 
 export type Order = {
   id: string;
@@ -36,6 +31,7 @@ export type Order = {
     name: string;
     quantity: number;
     unitPriceCentavos: number;
+    freeDrink: boolean;
     addons?: {
       id: string;
       name: string;

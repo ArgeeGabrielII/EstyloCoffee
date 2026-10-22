@@ -13,11 +13,8 @@ export class CoffeeService {
 
   async create(dto: OrderDto, key: string, actor: string) {
     if (!key || key.length < 16 || key.length > 80) {
-      throw new BadRequestException(
-        "Idempotency-Key required (16–80 characters)",
-      );
+      throw new BadRequestException("Idempotency-Key required (16–80 characters)");
     }
-
     if (
       ((dto.source === "SMS" || dto.fulfillment === "DELIVERY") &&
         !dto.customer.trim()) ||
@@ -29,52 +26,31 @@ export class CoffeeService {
     }
 
     return this.p.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtext(${key}))
-      `;
-
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
       const old = await tx.order.findUnique({
         where: { requestKey: key },
         include: { items: { include: { addons: true } } },
       });
-
       if (old) return old;
 
       const items = [];
       let totalCentavos = 0;
-
       for (const line of dto.items) {
-        const product = await tx.product.findUnique({
-          where: { id: line.productId },
-        });
-
+        const product = await tx.product.findUnique({ where: { id: line.productId } });
         if (!product?.active || !product.priceCentavos) {
-          throw new BadRequestException(
-            "Product unavailable or price not configured",
-          );
+          throw new BadRequestException("Product unavailable or price not configured");
         }
-
         const addons = [];
         let addonTotal = 0;
         const seen = new Set<string>();
-
         for (const selection of line.addons || []) {
           if (seen.has(selection.addonId)) {
             throw new BadRequestException("Duplicate add-on selection");
           }
-
           seen.add(selection.addonId);
-
-          const addon = await tx.addon.findUnique({
-            where: { id: selection.addonId },
-          });
-
-          if (!addon?.active) {
-            throw new BadRequestException("Add-on unavailable");
-          }
-
+          const addon = await tx.addon.findUnique({ where: { id: selection.addonId } });
+          if (!addon?.active) throw new BadRequestException("Add-on unavailable");
           addonTotal += addon.priceCentavos * selection.quantity;
-
           addons.push({
             addonId: addon.id,
             name: addon.name,
@@ -82,31 +58,22 @@ export class CoffeeService {
             unitPriceCentavos: addon.priceCentavos,
           });
         }
-
-        totalCentavos +=
-          (product.priceCentavos + addonTotal) * line.quantity;
-
+        // Complimentary applies only to the base drink; add-ons remain payable.
+        const freeDrink = line.freeDrink === true;
+        totalCentavos += ((freeDrink ? 0 : product.priceCentavos) + addonTotal) * line.quantity;
         items.push({
           productId: product.id,
           name: product.name,
           quantity: line.quantity,
           unitPriceCentavos: product.priceCentavos,
+          freeDrink,
           addons: { create: addons },
         });
       }
-
       if (totalCentavos > 2000000000) {
-        throw new BadRequestException(
-          "Order exceeds maximum supported total",
-        );
+        throw new BadRequestException("Order exceeds maximum supported total");
       }
-
-      // Allocate one queue number per order, not per cup.
-      // PostgreSQL upsert serializes concurrent increments for each day.
-      // Using Philippine local date means the counter resets at midnight PHT.
-      const counters = await tx.$queryRaw<
-        Array<{ day: Date; number: number }>
-      >`
+      const counters = await tx.$queryRaw<Array<{ day: Date; number: number }>>`
         INSERT INTO "DailyQueueCounter" ("day", "lastNumber")
         VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date, 1)
         ON CONFLICT ("day") DO UPDATE
@@ -114,7 +81,6 @@ export class CoffeeService {
         RETURNING "day", "lastNumber" AS "number"
       `;
       const queue = counters[0];
-
       const order = await tx.order.create({
         data: {
           requestKey: key,
@@ -131,43 +97,33 @@ export class CoffeeService {
         },
         include: { items: { include: { addons: true } } },
       });
-
       await tx.auditLog.create({
-        data: {
-          event: "ORDER_CREATED",
-          entityId: order.id,
-          userId: actor,
-        },
+        data: { event: "ORDER_CREATED", entityId: order.id, userId: actor },
       });
-
+      if (items.some((item) => item.freeDrink)) {
+        await tx.auditLog.create({
+          data: { event: "ORDER_COMPLIMENTARY_DRINK", entityId: order.id, userId: actor },
+        });
+      }
       return order;
     });
   }
 
   async voidOrder(id: string, actor: string) {
     return this.p.$transaction(async (tx) => {
-      await tx.$queryRaw`
-        SELECT id FROM "Order" WHERE id=${id} FOR UPDATE
-      `;
-
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
       if (!old) throw new NotFoundException();
       if (old.status === "CANCELLED") {
         throw new BadRequestException("Transaction is already cancelled or voided");
       }
-
-      // Preserve paid status and original amount for audit and reconciliation.
-      // Voiding excludes this sale from reports; it does NOT issue a refund.
       const order = await tx.order.update({
-        where: { id },
-        data: { status: "CANCELLED" },
+        where: { id }, data: { status: "CANCELLED" },
       });
-
       await tx.auditLog.create({
         data: {
           event: old.payment === "PAID" ? "ORDER_VOIDED_PAID" : "ORDER_VOIDED_UNPAID",
-          entityId: id,
-          userId: actor,
+          entityId: id, userId: actor,
         },
       });
       return order;
@@ -176,25 +132,14 @@ export class CoffeeService {
 
   async update(id: string, dto: UpdateOrderDto, actor: string) {
     return this.p.$transaction(async (tx) => {
-      await tx.$queryRaw`
-        SELECT id FROM "Order" WHERE id=${id} FOR UPDATE
-      `;
-
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
-
       if (!old) throw new NotFoundException();
-
       const next = transition(old, dto);
       const order = await tx.order.update({ where: { id }, data: next });
-
       await tx.auditLog.create({
-        data: {
-          event: "ORDER_" + next.status + "_" + next.payment,
-          entityId: id,
-          userId: actor,
-        },
+        data: { event: "ORDER_" + next.status + "_" + next.payment, entityId: id, userId: actor },
       });
-
       return order;
     });
   }

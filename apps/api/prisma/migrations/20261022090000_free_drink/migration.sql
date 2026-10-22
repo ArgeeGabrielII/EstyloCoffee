@@ -1,0 +1,1 @@
+ALTER TABLE "OrderItem" ADD COLUMN "freeDrink" BOOLEAN NOT NULL DEFAULT false;

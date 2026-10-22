@@ -88,6 +88,7 @@ model OrderItem {
   name              String
   quantity          Int
   unitPriceCentavos Int
+  freeDrink         Boolean          @default(false)
   addons            OrderItemAddon[]
 }
 
