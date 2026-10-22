@@ -17,6 +17,9 @@ type SaleRow = {
   productId: string;
   name: string;
   quantity: number;
+  freeCups: number;
+  coffeeSalesCentavos: number;
+  addonSalesCentavos: number;
   salesCentavos: number;
 };
 
@@ -42,7 +45,9 @@ export class CupsReportController {
   ) {
     const year = Number(yearParam);
     const month =
-      monthParam === undefined ? undefined : Number(monthParam);
+      monthParam === undefined
+        ? undefined
+        : Number(monthParam);
 
     if (
       !yearParam ||
@@ -60,9 +65,11 @@ export class CupsReportController {
       throw new BadRequestException("Invalid month");
     }
 
+    // Philippine Time (UTC+8).
+    // Start inclusive, end exclusive.
+    const offsetMs = 8 * 60 * 60 * 1000;
     const startMonth = month ?? 1;
     const endMonth = month ?? 12;
-    const offsetMs = 8 * 60 * 60 * 1000;
 
     const start = new Date(
       Date.UTC(year, startMonth - 1, 1) - offsetMs
@@ -72,19 +79,23 @@ export class CupsReportController {
       Date.UTC(year, endMonth, 1) - offsetMs
     );
 
-    // Philippine Time, with an exclusive end boundary.
     const [products, orders] = await Promise.all([
       this.prisma.product.findMany({
         select: {
           id: true,
           name: true,
         },
-        orderBy: { name: "asc" },
+        orderBy: {
+          name: "asc",
+        },
       }),
+
       this.prisma.order.findMany({
         where: {
           payment: "PAID",
-          status: { not: "CANCELLED" },
+          status: {
+            not: "CANCELLED",
+          },
           createdAt: {
             gte: start,
             lt: end,
@@ -124,7 +135,10 @@ export class CupsReportController {
     const addonTotals = new Map<string, AddonSaleRow>();
 
     const productNames = new Map<string, string>(
-      products.map((product) => [product.id, product.name])
+      products.map((product) => [
+        product.id,
+        product.name,
+      ])
     );
 
     for (const order of orders) {
@@ -140,60 +154,87 @@ export class CupsReportController {
       ].join("-");
 
       const period =
-        month === undefined ? date.slice(0, 7) : date;
+        month === undefined
+          ? date.slice(0, 7)
+          : date;
 
       for (const item of order.items) {
-        const addonPerCup = item.addons.reduce(
-          (sum, addon) =>
-            sum + addon.quantity * addon.unitPriceCentavos,
-          0
-        );
+        // Free cups are counted by quantity,
+        // not by the number of order lines.
+        const freeCups = item.freeDrink
+          ? item.quantity
+          : 0;
 
-        // Free base drinks contribute zero base revenue.
-        // Their paid add-ons still count as sales.
-        const basePrice = item.freeDrink
-          ? 0
-          : item.unitPriceCentavos;
+        // Free drinks have zero base coffee revenue.
+        const coffeeSalesCentavos =
+          item.quantity *
+          (item.freeDrink ? 0 : item.unitPriceCentavos);
+
+        // Add-ons remain chargeable for free drinks.
+        const addonSalesCentavos =
+          item.quantity *
+          item.addons.reduce(
+            (sum, addon) =>
+              sum +
+              addon.quantity * addon.unitPriceCentavos,
+            0
+          );
 
         const salesCentavos =
-          item.quantity * (basePrice + addonPerCup);
+          coffeeSalesCentavos + addonSalesCentavos;
 
-        const coffeeKey = `${period}|${item.productId}`;
-        const existingCoffee = coffeeTotals.get(coffeeKey);
+        const coffeeKey =
+          `${period}|${item.productId}`;
+
+        const existingCoffee =
+          coffeeTotals.get(coffeeKey);
 
         if (existingCoffee) {
           existingCoffee.quantity += item.quantity;
-          existingCoffee.salesCentavos += salesCentavos;
+          existingCoffee.freeCups += freeCups;
+          existingCoffee.coffeeSalesCentavos +=
+            coffeeSalesCentavos;
+          existingCoffee.addonSalesCentavos +=
+            addonSalesCentavos;
+          existingCoffee.salesCentavos +=
+            salesCentavos;
         } else {
           coffeeTotals.set(coffeeKey, {
             date: period,
             productId: item.productId,
             name: item.name,
             quantity: item.quantity,
+            freeCups,
+            coffeeSalesCentavos,
+            addonSalesCentavos,
             salesCentavos,
           });
         }
 
-        // Retain historical coffee names for products
-        // that are no longer in the active catalog.
+        // Keep historical product names available
+        // even if a product is removed from the menu.
         if (!productNames.has(item.productId)) {
           productNames.set(item.productId, item.name);
         }
 
         for (const addon of item.addons) {
-          // Add-on quantities are recorded per cup.
-          const quantity = addon.quantity * item.quantity;
+          // Add-on quantity is per cup.
+          const quantity =
+            addon.quantity * item.quantity;
+
           const addonRevenue =
             quantity * addon.unitPriceCentavos;
 
           const addonKey =
             `${period}|${item.productId}|${addon.addonId}`;
 
-          const existingAddon = addonTotals.get(addonKey);
+          const existingAddon =
+            addonTotals.get(addonKey);
 
           if (existingAddon) {
             existingAddon.quantity += quantity;
-            existingAddon.salesCentavos += addonRevenue;
+            existingAddon.salesCentavos +=
+              addonRevenue;
           } else {
             addonTotals.set(addonKey, {
               date: period,
@@ -214,18 +255,20 @@ export class CupsReportController {
 
       products: Array.from(
         productNames,
-        ([id, name]) => ({ id, name })
-      ).sort((a, b) => a.name.localeCompare(b.name)),
+        ([id, name]) => ({
+          id,
+          name,
+        })
+      ).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      ),
 
-      // Coffee sales already include their paid add-ons.
       sales: Array.from(coffeeTotals.values()).sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||
           a.name.localeCompare(b.name)
       ),
 
-      // Separate add-on details for reporting.
-      // Do not add these amounts to coffee sales again.
       addonSales: Array.from(addonTotals.values()).sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||

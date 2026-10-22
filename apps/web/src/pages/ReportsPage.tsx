@@ -22,6 +22,7 @@ ChartJS.register(
 );
 
 type Mode = "daily" | "monthly";
+type SalesView = "coffee" | "addons" | "combined";
 
 type Product = {
   id: string;
@@ -33,6 +34,9 @@ type Sale = {
   productId: string;
   name: string;
   quantity: number;
+  freeCups: number;
+  coffeeSalesCentavos: number;
+  addonSalesCentavos: number;
   salesCentavos: number;
 };
 
@@ -52,18 +56,9 @@ type BreakdownReport = {
 };
 
 const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
+  "January", "February", "March", "April",
+  "May", "June", "July", "August",
+  "September", "October", "November", "December",
 ];
 
 function todayPH() {
@@ -85,12 +80,12 @@ function todayPH() {
 }
 
 function datePH() {
-  const today = todayPH();
+  const t = todayPH();
 
   return [
-    today.year,
-    String(today.month).padStart(2, "0"),
-    String(today.day).padStart(2, "0"),
+    t.year,
+    String(t.month).padStart(2, "0"),
+    String(t.day).padStart(2, "0"),
   ].join("-");
 }
 
@@ -102,7 +97,6 @@ function colorFor(id: string) {
   }
 
   const hue = ((hash % 360) + 360) % 360;
-
   return `hsl(${hue}, 65%, 52%)`;
 }
 
@@ -176,14 +170,17 @@ function Dashboard() {
 // --------------------------------------------------
 
 function SalesReports() {
-  const today = todayPH();
+  const initial = todayPH();
 
   const [mode, setMode] = useState<Mode>("daily");
-  const [year, setYear] = useState(today.year);
-  const [month, setMonth] = useState(today.month);
+  const [year, setYear] = useState(initial.year);
+  const [month, setMonth] = useState(initial.month);
 
-  // The daily breakdown has its own independent date.
-  const [breakdownDate, setBreakdownDate] = useState(datePH);
+  const [salesView, setSalesView] =
+    useState<SalesView>("combined");
+
+  const [breakdownDate, setBreakdownDate] =
+    useState(datePH);
 
   const [report, setReport] =
     useState<BreakdownReport | null>(null);
@@ -197,10 +194,11 @@ function SalesReports() {
   const [breakdownLoading, setBreakdownLoading] =
     useState(true);
 
-  const [breakdownError, setBreakdownError] = useState("");
+  const [breakdownError, setBreakdownError] =
+    useState("");
 
   // --------------------------------------------------
-  // Fetch Daily/Monthly Chart Data
+  // Load Daily / Monthly Charts
   // --------------------------------------------------
 
   useEffect(() => {
@@ -219,13 +217,11 @@ function SalesReports() {
           params.set("month", String(month));
         }
 
-        const result = await api<BreakdownReport>(
+        const data = await api<BreakdownReport>(
           `/reports/cups?${params.toString()}`
         );
 
-        if (active) {
-          setReport(result);
-        }
+        if (active) setReport(data);
       } catch (e) {
         if (active) {
           setReport(null);
@@ -236,9 +232,7 @@ function SalesReports() {
           );
         }
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -250,7 +244,7 @@ function SalesReports() {
   }, [mode, year, month]);
 
   // --------------------------------------------------
-  // Fetch Data for Selected Breakdown Date
+  // Load Selected Date Breakdown
   // --------------------------------------------------
 
   useEffect(() => {
@@ -275,26 +269,22 @@ function SalesReports() {
           month: String(Number(match![2])),
         });
 
-        const result = await api<BreakdownReport>(
+        const data = await api<BreakdownReport>(
           `/reports/cups?${params.toString()}`
         );
 
-        if (active) {
-          setBreakdownReport(result);
-        }
+        if (active) setBreakdownReport(data);
       } catch (e) {
         if (active) {
           setBreakdownReport(null);
           setBreakdownError(
             e instanceof Error
               ? e.message
-              : "Unable to load daily sales"
+              : "Unable to load daily breakdown"
           );
         }
       } finally {
-        if (active) {
-          setBreakdownLoading(false);
-        }
+        if (active) setBreakdownLoading(false);
       }
     }
 
@@ -306,67 +296,16 @@ function SalesReports() {
   }, [breakdownDate]);
 
   // --------------------------------------------------
-  // Selected-Day Coffee Sales
+  // Selected Date Calculations
   // --------------------------------------------------
 
-  const breakdownSales = useMemo(
+  const dailySales = useMemo(
     () =>
       (breakdownReport?.sales ?? []).filter(
         (sale) => sale.date === breakdownDate
       ),
     [breakdownReport, breakdownDate]
   );
-
-  const breakdownProductTotals = useMemo(() => {
-    const map = new Map<
-      string,
-      { cups: number; cents: number }
-    >();
-
-    for (const sale of breakdownSales) {
-      const current = map.get(sale.productId) ?? {
-        cups: 0,
-        cents: 0,
-      };
-
-      current.cups += sale.quantity;
-      current.cents += sale.salesCentavos;
-
-      map.set(sale.productId, current);
-    }
-
-    return map;
-  }, [breakdownSales]);
-
-  const breakdownCups = breakdownSales.reduce(
-    (sum, sale) => sum + sale.quantity,
-    0
-  );
-
-  const breakdownCentavos = breakdownSales.reduce(
-    (sum, sale) => sum + sale.salesCentavos,
-    0
-  );
-
-  const breakdownProducts = breakdownReport?.products ?? [];
-
-  const breakdownBestSeller = [...breakdownProducts].sort(
-    (a, b) =>
-      (breakdownProductTotals.get(b.id)?.cups ?? 0) -
-      (breakdownProductTotals.get(a.id)?.cups ?? 0)
-  )[0];
-
-  const breakdownHighestRevenue = [
-    ...breakdownProducts,
-  ].sort(
-    (a, b) =>
-      (breakdownProductTotals.get(b.id)?.cents ?? 0) -
-      (breakdownProductTotals.get(a.id)?.cents ?? 0)
-  )[0];
-
-  // --------------------------------------------------
-  // Selected-Day Add-on Sales
-  // --------------------------------------------------
 
   const dailyAddonSales = useMemo(
     () =>
@@ -376,7 +315,28 @@ function SalesReports() {
     [breakdownReport, breakdownDate]
   );
 
-  // Add-ons grouped by the coffee they were sold with.
+  const coffeeTotals = useMemo(() => {
+    const map = new Map<string, Sale>();
+
+    for (const sale of dailySales) {
+      const existing = map.get(sale.productId);
+
+      if (existing) {
+        existing.quantity += sale.quantity;
+        existing.freeCups += sale.freeCups;
+        existing.coffeeSalesCentavos +=
+          sale.coffeeSalesCentavos;
+        existing.addonSalesCentavos +=
+          sale.addonSalesCentavos;
+        existing.salesCentavos += sale.salesCentavos;
+      } else {
+        map.set(sale.productId, { ...sale });
+      }
+    }
+
+    return map;
+  }, [dailySales]);
+
   const addonsByCoffee = useMemo(() => {
     const map = new Map<string, AddonSale[]>();
 
@@ -389,11 +349,11 @@ function SalesReports() {
     return map;
   }, [dailyAddonSales]);
 
-  // Add-ons aggregated across all coffee variants.
   const addonTotals = useMemo(() => {
     const map = new Map<
       string,
       {
+        id: string;
         name: string;
         quantity: number;
         cents: number;
@@ -401,39 +361,72 @@ function SalesReports() {
     >();
 
     for (const addon of dailyAddonSales) {
-      const current = map.get(addon.addonId) ?? {
-        name: addon.name,
-        quantity: 0,
-        cents: 0,
-      };
+      const existing = map.get(addon.addonId);
 
-      current.quantity += addon.quantity;
-      current.cents += addon.salesCentavos;
-
-      map.set(addon.addonId, current);
+      if (existing) {
+        existing.quantity += addon.quantity;
+        existing.cents += addon.salesCentavos;
+      } else {
+        map.set(addon.addonId, {
+          id: addon.addonId,
+          name: addon.name,
+          quantity: addon.quantity,
+          cents: addon.salesCentavos,
+        });
+      }
     }
 
-    return Array.from(map.entries())
-      .map(([id, value]) => ({
-        id,
-        ...value,
-      }))
-      .sort(
-        (a, b) =>
-          b.quantity - a.quantity ||
-          a.name.localeCompare(b.name)
-      );
+    return [...map.values()].sort(
+      (a, b) =>
+        b.quantity - a.quantity ||
+        a.name.localeCompare(b.name)
+    );
   }, [dailyAddonSales]);
 
-  const addonQuantity = addonTotals.reduce(
+  const breakdownProducts = breakdownReport?.products ?? [];
+
+  const totalCoffeeCups = dailySales.reduce(
+    (sum, sale) => sum + sale.quantity,
+    0
+  );
+
+  const totalFreeCups = dailySales.reduce(
+    (sum, sale) => sum + sale.freeCups,
+    0
+  );
+
+  const totalPaidCups =
+    totalCoffeeCups - totalFreeCups;
+
+  const totalCoffeeRevenue = dailySales.reduce(
+    (sum, sale) => sum + sale.coffeeSalesCentavos,
+    0
+  );
+
+  const totalAddonQuantity = addonTotals.reduce(
     (sum, addon) => sum + addon.quantity,
     0
   );
 
-  const addonRevenue = addonTotals.reduce(
+  const totalAddonRevenue = addonTotals.reduce(
     (sum, addon) => sum + addon.cents,
     0
   );
+
+  const totalCombinedRevenue =
+    totalCoffeeRevenue + totalAddonRevenue;
+
+  const bestSeller = [...breakdownProducts].sort(
+    (a, b) =>
+      (coffeeTotals.get(b.id)?.quantity ?? 0) -
+      (coffeeTotals.get(a.id)?.quantity ?? 0)
+  )[0];
+
+  const highestRevenue = [...breakdownProducts].sort(
+    (a, b) =>
+      (coffeeTotals.get(b.id)?.salesCentavos ?? 0) -
+      (coffeeTotals.get(a.id)?.salesCentavos ?? 0)
+  )[0];
 
   // --------------------------------------------------
   // Chart Periods
@@ -454,11 +447,7 @@ function SalesReports() {
       const day = index + 1;
 
       return {
-        key: [
-          year,
-          String(month).padStart(2, "0"),
-          String(day).padStart(2, "0"),
-        ].join("-"),
+        key: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
         label: String(day),
         fullName: `${MONTHS[month - 1]} ${day}`,
       };
@@ -492,12 +481,12 @@ function SalesReports() {
   }, [sales]);
 
   const totalCups = sales.reduce(
-    (sum, row) => sum + row.quantity,
+    (sum, sale) => sum + sale.quantity,
     0
   );
 
   const totalSales = sales.reduce(
-    (sum, row) => sum + row.salesCentavos,
+    (sum, sale) => sum + sale.salesCentavos,
     0
   );
 
@@ -526,7 +515,7 @@ function SalesReports() {
     : 0;
 
   // --------------------------------------------------
-  // Chart Data
+  // Chart Configuration
   // --------------------------------------------------
 
   function chartData(metric: "cups" | "pesos") {
@@ -639,11 +628,7 @@ function SalesReports() {
       return;
     }
 
-    const next = new Date(
-      year,
-      month - 1 + delta,
-      1
-    );
+    const next = new Date(year, month - 1 + delta, 1);
 
     setYear(next.getFullYear());
     setMonth(next.getMonth() + 1);
@@ -660,11 +645,8 @@ function SalesReports() {
         <div className="d-flex justify-content-between flex-wrap gap-2 mb-3">
           <div>
             <h4>{title}</h4>
-            <p className="muted mb-0">
-              {description}
-            </p>
+            <p className="muted mb-0">{description}</p>
           </div>
-
           <strong>{total}</strong>
         </div>
 
@@ -676,8 +658,7 @@ function SalesReports() {
           <div style={{ overflowX: "auto" }}>
             <div
               style={{
-                minWidth:
-                  mode === "daily" ? 980 : 600,
+                minWidth: mode === "daily" ? 980 : 600,
                 height: 420,
               }}
             >
@@ -693,7 +674,7 @@ function SalesReports() {
   }
 
   // --------------------------------------------------
-  // Page
+  // Main Page
   // --------------------------------------------------
 
   return (
@@ -708,7 +689,7 @@ function SalesReports() {
         </div>
       </div>
 
-      {/* Report period controls */}
+      {/* Daily / Monthly Report Controls */}
 
       <div className="card-estylo mb-4">
         <div className="d-flex flex-wrap align-items-end gap-3">
@@ -758,10 +739,7 @@ function SalesReports() {
                 }
               >
                 {MONTHS.map((name, index) => (
-                  <option
-                    key={name}
-                    value={index + 1}
-                  >
+                  <option key={name} value={index + 1}>
                     {name}
                   </option>
                 ))}
@@ -807,9 +785,9 @@ function SalesReports() {
             type="button"
             className="btn btn-outline-secondary"
             onClick={() => {
-              const current = todayPH();
-              setYear(current.year);
-              setMonth(current.month);
+              const t = todayPH();
+              setYear(t.year);
+              setMonth(t.month);
             }}
           >
             Current Period
@@ -818,67 +796,49 @@ function SalesReports() {
       </div>
 
       {error && (
-        <div
-          className="alert alert-danger"
-          role="alert"
-        >
+        <div className="alert alert-danger" role="alert">
           {error}
         </div>
       )}
 
-      {/* Sales summary */}
+      {/* Daily / Monthly Metrics */}
 
       <div className="metric-grid mb-4">
         {[
-          [
-            "Total Cups Sold",
-            totalCups.toLocaleString(),
-          ],
+          ["Total Cups Sold", totalCups.toLocaleString()],
           ["Total Sales", money(totalSales)],
           ["Average Cups", avgCups.toFixed(1)],
-          [
-            "Average Sales",
-            money(Math.round(avgSales)),
-          ],
+          ["Average Sales", money(Math.round(avgSales))],
         ].map(([label, value]) => (
-          <div
-            className="card-estylo"
-            key={label}
-          >
-            <div className="metric-label">
-              {label}
-            </div>
-            <div className="metric-value">
-              {value}
-            </div>
+          <div className="card-estylo" key={label}>
+            <div className="metric-label">{label}</div>
+            <div className="metric-value">{value}</div>
           </div>
         ))}
       </div>
 
       {renderChart(
         "Cups Sold Report",
-        "Number of cups sold per coffee variant",
+        "Number of cups served per coffee variant",
         "cups",
         `${totalCups.toLocaleString()} cups`
       )}
 
       {renderChart(
         "Sales Report",
-        "Revenue per coffee variant, including selected add-ons",
+        "Coffee and add-on revenue per coffee variant",
         "pesos",
         money(totalSales)
       )}
 
-      {/* Coffee Sales Breakdown */}
+      {/* Sales Breakdown */}
 
       <div className="card-estylo mb-4">
         <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
           <div>
-            <h4 className="mb-1">
-              Coffee Sales Breakdown
-            </h4>
+            <h4 className="mb-1">Sales Breakdown</h4>
             <p className="muted mb-0">
-              Coffee and add-on sales for one selected day
+              Select a category and sales date
               (Philippine Time)
             </p>
           </div>
@@ -888,14 +848,27 @@ function SalesReports() {
               className="form-label fw-semibold"
               htmlFor="breakdown-date"
             >
-              Sales date
+              Sales Date
             </label>
 
-            <div className="d-flex flex-wrap gap-2">
+            {/* No wrapping: Today stays beside date */}
+            <div
+              className="d-flex align-items-center gap-2"
+              style={{
+                flexWrap: "nowrap",
+                width: "max-content",
+                maxWidth: "100%",
+              }}
+            >
               <input
                 id="breakdown-date"
                 type="date"
                 className="form-control"
+                style={{
+                  width: 165,
+                  minWidth: 0,
+                  flexShrink: 1,
+                }}
                 value={breakdownDate}
                 onChange={(e) =>
                   setBreakdownDate(e.target.value)
@@ -904,7 +877,7 @@ function SalesReports() {
 
               <button
                 type="button"
-                className="btn btn-outline-secondary"
+                className="btn btn-outline-secondary flex-shrink-0"
                 onClick={() =>
                   setBreakdownDate(datePH())
                 }
@@ -915,11 +888,36 @@ function SalesReports() {
           </div>
         </div>
 
+        {/* Three Sales Views */}
+
+        <div
+          className="d-flex flex-wrap gap-2 mb-3"
+          role="group"
+          aria-label="Sales breakdown view"
+        >
+          {([
+            ["coffee", "Coffee Sales Only"],
+            ["addons", "Add-On Sales Only"],
+            ["combined", "Coffee / Add-On Sales"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={salesView === value}
+              className={`btn ${
+                salesView === value
+                  ? "btn-dark"
+                  : "btn-outline-secondary"
+              }`}
+              onClick={() => setSalesView(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {breakdownError && (
-          <div
-            className="alert alert-danger"
-            role="alert"
-          >
+          <div className="alert alert-danger" role="alert">
             {breakdownError}
           </div>
         )}
@@ -932,241 +930,309 @@ function SalesReports() {
           </p>
         ) : (
           <>
-            <div className="table-responsive">
-              <table className="table align-middle">
-                <thead>
-                  <tr>
-                    <th>Coffee / Add-on</th>
-                    <th className="text-end">
-                      Cups / Qty
-                    </th>
-                    <th className="text-end">
-                      Sales
-                    </th>
-                  </tr>
-                </thead>
+            {/* Free Cups Summary */}
 
-                <tbody>
-                  {breakdownProducts.map((product) => {
-                    const totals =
-                      breakdownProductTotals.get(
-                        product.id
-                      );
+            <div className="metric-grid mb-4">
+              {[
+                ["Total Cups Served", totalCoffeeCups],
+                ["Paid Cups", totalPaidCups],
+                ["Free Cups Served", totalFreeCups],
+              ].map(([label, value]) => (
+                <div className="card-estylo" key={label}>
+                  <div className="metric-label">
+                    {label}
+                  </div>
+                  <div className="metric-value">
+                    {value.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                    const coffeeAddons =
-                      addonsByCoffee.get(product.id) ?? [];
+            {/* Coffee Sales Only */}
 
-                    return (
-                      <Fragment key={product.id}>
-                        <tr>
-                          <td>
-                            <span
-                              style={{
-                                display: "inline-block",
-                                width: 12,
-                                height: 12,
-                                marginRight: 8,
-                                borderRadius: 3,
-                                background: colorFor(
-                                  product.id
-                                ),
-                              }}
-                            />
-                            {product.name}
-                          </td>
+            {salesView === "coffee" && (
+              <>
+                <div className="table-responsive">
+                  <table className="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Coffee</th>
+                        <th className="text-end">
+                          Cups Served
+                        </th>
+                        <th className="text-end">
+                          Free Cups
+                        </th>
+                        <th className="text-end">
+                          Coffee Sales
+                        </th>
+                      </tr>
+                    </thead>
 
-                          <td className="text-end">
-                            {totals?.cups ?? 0}
-                          </td>
+                    <tbody>
+                      {breakdownProducts.map((product) => {
+                        const row =
+                          coffeeTotals.get(product.id);
 
-                          <td className="text-end">
-                            {money(totals?.cents ?? 0)}
-                          </td>
-                        </tr>
-
-                        {coffeeAddons.map((addon) => (
-                          <tr
-                            key={`${product.id}-${addon.addonId}`}
-                            className="text-muted"
-                          >
-                            <td className="ps-4">
-                              ↳ {addon.name}{" "}
-                              <small>(add-on)</small>
-                            </td>
-
+                        return (
+                          <tr key={product.id}>
+                            <td>{product.name}</td>
                             <td className="text-end">
-                              {addon.quantity}
+                              {row?.quantity ?? 0}
                             </td>
-
+                            <td className="text-end">
+                              {row?.freeCups ?? 0}
+                            </td>
                             <td className="text-end">
                               {money(
-                                addon.salesCentavos
+                                row?.coffeeSalesCentavos ?? 0
                               )}
                             </td>
                           </tr>
-                        ))}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
+                        );
+                      })}
+                    </tbody>
 
-                <tfoot>
-                  <tr className="fw-bold">
-                    <td>Total</td>
+                    <tfoot>
+                      <tr className="fw-bold">
+                        <td>Total</td>
+                        <td className="text-end">
+                          {totalCoffeeCups}
+                        </td>
+                        <td className="text-end">
+                          {totalFreeCups}
+                        </td>
+                        <td className="text-end">
+                          {money(totalCoffeeRevenue)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
 
-                    <td className="text-end">
-                      {breakdownCups} cups
-                    </td>
+                <p className="muted mb-0">
+                  Base coffee revenue only. Add-ons
+                  are excluded. Free cups count toward
+                  cups served but have no base revenue.
+                </p>
+              </>
+            )}
 
-                    <td className="text-end">
-                      {money(breakdownCentavos)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            {/* Add-On Sales Only */}
 
-            <p className="muted">
-              Coffee sales include paid add-ons.
-              The indented add-on rows are included
-              in their parent coffee totals.
-            </p>
+            {salesView === "addons" && (
+              <>
+                <div className="table-responsive">
+                  <table className="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Add-on</th>
+                        <th className="text-end">
+                          Quantity Sold
+                        </th>
+                        <th className="text-end">
+                          Add-on Sales
+                        </th>
+                      </tr>
+                    </thead>
 
-            <div className="mt-3">
-              <p>
-                <strong>
-                  Best-selling coffee:
-                </strong>{" "}
-                {breakdownBestSeller &&
-                (breakdownProductTotals.get(
-                  breakdownBestSeller.id
-                )?.cups ?? 0) > 0
-                  ? breakdownBestSeller.name
-                  : "No sales yet"}
-              </p>
+                    <tbody>
+                      {addonTotals.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={3}
+                            className="text-center text-muted"
+                          >
+                            No add-ons sold on this date.
+                          </td>
+                        </tr>
+                      ) : (
+                        addonTotals.map((addon) => (
+                          <tr key={addon.id}>
+                            <td>{addon.name}</td>
+                            <td className="text-end">
+                              {addon.quantity}
+                            </td>
+                            <td className="text-end">
+                              {money(addon.cents)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
 
-              <p className="mb-0">
-                <strong>
-                  Highest revenue coffee:
-                </strong>{" "}
-                {breakdownHighestRevenue &&
-                (breakdownProductTotals.get(
-                  breakdownHighestRevenue.id
-                )?.cents ?? 0) > 0
-                  ? breakdownHighestRevenue.name
-                  : "No sales yet"}
-              </p>
-            </div>
+                    <tfoot>
+                      <tr className="fw-bold">
+                        <td>Total</td>
+                        <td className="text-end">
+                          {totalAddonQuantity}
+                        </td>
+                        <td className="text-end">
+                          {money(totalAddonRevenue)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <p className="muted mb-0">
+                  Add-on revenue includes extras
+                  purchased with Free Drinks.
+                </p>
+              </>
+            )}
+
+            {/* Combined Coffee / Add-On Sales */}
+
+            {salesView === "combined" && (
+              <>
+                <div className="table-responsive">
+                  <table className="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Coffee / Add-on</th>
+                        <th className="text-end">
+                          Cups / Qty
+                        </th>
+                        <th className="text-end">
+                          Free Cups
+                        </th>
+                        <th className="text-end">
+                          Sales
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {breakdownProducts.map((product) => {
+                        const row =
+                          coffeeTotals.get(product.id);
+
+                        const addons =
+                          addonsByCoffee.get(product.id) ?? [];
+
+                        return (
+                          <Fragment key={product.id}>
+                            <tr>
+                              <td>
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    width: 12,
+                                    height: 12,
+                                    marginRight: 8,
+                                    borderRadius: 3,
+                                    background: colorFor(
+                                      product.id
+                                    ),
+                                  }}
+                                />
+                                {product.name}
+                              </td>
+
+                              <td className="text-end">
+                                {row?.quantity ?? 0}
+                              </td>
+
+                              <td className="text-end">
+                                {row?.freeCups ?? 0}
+                              </td>
+
+                              <td className="text-end">
+                                {money(
+                                  row?.coffeeSalesCentavos ?? 0
+                                )}
+                              </td>
+                            </tr>
+
+                            {addons.map((addon) => (
+                              <tr
+                                key={`${product.id}-${addon.addonId}`}
+                                className="text-muted"
+                              >
+                                <td className="ps-4">
+                                  ↳ {addon.name}{" "}
+                                  <small>(add-on)</small>
+                                </td>
+
+                                <td className="text-end">
+                                  {addon.quantity}
+                                </td>
+
+                                <td className="text-end">
+                                  —
+                                </td>
+
+                                <td className="text-end">
+                                  {money(
+                                    addon.salesCentavos
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+
+                    <tfoot>
+                      <tr className="fw-bold">
+                        <td>Total Coffee + Add-ons</td>
+                        <td className="text-end">
+                          {totalCoffeeCups} cups ·{" "}
+                          {totalAddonQuantity} add-ons
+                        </td>
+                        <td className="text-end">
+                          {totalFreeCups}
+                        </td>
+                        <td className="text-end">
+                          {money(totalCombinedRevenue)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <p className="muted mb-0">
+                  Coffee rows show base coffee revenue.
+                  Indented add-on rows show extra revenue.
+                  Combined totals count each amount once.
+                </p>
+              </>
+            )}
+
+            {salesView !== "addons" && (
+              <div className="mt-3">
+                <p>
+                  <strong>Best-selling coffee:</strong>{" "}
+                  {bestSeller &&
+                  (coffeeTotals.get(bestSeller.id)?.quantity ?? 0) > 0
+                    ? bestSeller.name
+                    : "No sales yet"}
+                </p>
+
+                <p className="mb-0">
+                  <strong>
+                    Highest revenue coffee:
+                  </strong>{" "}
+                  {highestRevenue &&
+                  (coffeeTotals.get(highestRevenue.id)?.salesCentavos ?? 0) > 0
+                    ? highestRevenue.name
+                    : "No sales yet"}
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* Add-on Sales Breakdown */}
-
-      <div className="card-estylo mb-4">
-        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <div>
-            <h4 className="mb-1">
-              Add-on Sales Breakdown
-            </h4>
-
-            <p className="muted mb-0">
-              Sales for {breakdownDate} (Philippine Time)
-            </p>
-          </div>
-
-          <strong>
-            {addonQuantity} add-ons ·{" "}
-            {money(addonRevenue)}
-          </strong>
-        </div>
-
-        {breakdownLoading ? (
-          <p>Loading add-on sales...</p>
-        ) : breakdownError ? (
-          <div
-            className="alert alert-danger"
-            role="alert"
-          >
-            {breakdownError}
-          </div>
-        ) : !breakdownReport ? (
-          <p className="empty">
-            Add-on sales are unavailable.
-          </p>
-        ) : (
-          <div className="table-responsive">
-            <table className="table align-middle">
-              <thead>
-                <tr>
-                  <th>Add-on</th>
-                  <th className="text-end">
-                    Quantity Sold
-                  </th>
-                  <th className="text-end">
-                    Sales
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {addonTotals.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={3}
-                      className="text-center text-muted"
-                    >
-                      No add-ons sold on this date.
-                    </td>
-                  </tr>
-                ) : (
-                  addonTotals.map((addon) => (
-                    <tr key={addon.id}>
-                      <td>{addon.name}</td>
-
-                      <td className="text-end">
-                        {addon.quantity}
-                      </td>
-
-                      <td className="text-end">
-                        {money(addon.cents)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-
-              <tfoot>
-                <tr className="fw-bold">
-                  <td>Total</td>
-
-                  <td className="text-end">
-                    {addonQuantity}
-                  </td>
-
-                  <td className="text-end">
-                    {money(addonRevenue)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-
-        <p className="muted mb-0">
-          Add-on revenue is already included in
-          coffee sales. Do not add these totals
-          together.
-        </p>
-      </div>
-
       <p className="muted">
         Reports include paid, non-cancelled orders.
-        Sales use recorded order-item prices and
-        add-on prices. Free Drinks have zero base-drink
-        revenue, but their paid add-ons are included.
-        Dates without sales, including future dates,
-        show zero values.
+        Free Drinks count toward cups served but
+        contribute zero base coffee revenue.
+        Their paid add-ons are included in add-on
+        and combined sales. All dates use Philippine Time.
       </p>
     </div>
   );
