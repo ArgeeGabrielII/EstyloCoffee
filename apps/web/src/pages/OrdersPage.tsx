@@ -27,9 +27,7 @@ export function OrdersPage() {
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [expanded, setExpanded] = useState<Record<Status, boolean>>({
-    NEW: true, PREPARING: true, READY: true, COMPLETED: false, CANCELLED: false,
-  });
+  const [activeTab, setActiveTab] = useState<Status>("NEW");
   const { data: orders, error, loading, updatedAt } = useAutoRefresh<Order[]>("/queue/staff", [], revision);
 
   async function update(order: Order, patch: object) {
@@ -57,7 +55,7 @@ export function OrdersPage() {
     try {
       await api("/orders/" + order.id + "/void", { method: "POST" });
       setRevision((old) => old + 1);
-      setExpanded((old) => ({ ...old, CANCELLED: true }));
+
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Unable to void transaction.");
     } finally {
@@ -75,26 +73,55 @@ export function OrdersPage() {
       <p className="small text-secondary">
         {loading ? "Loading orders…" : updatedAt ? `Last updated: ${updatedAt.toLocaleTimeString()}` : "Waiting for connection…"}
       </p>
-      {groups.map((group) => {
+      <div
+        role="tablist"
+        aria-label="Order status"
+        className="d-flex gap-2 mb-3 pb-2"
+        style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}
+      >
+        {groups.map((group) => {
+          const count = orders.filter((order) => order.status === group.status).length;
+          const selected = activeTab === group.status;
+          return (
+            <button
+              key={group.status}
+              id={`tab-${group.status}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`panel-${group.status}`}
+              className={`btn ${selected ? "btn-estylo" : "btn-outline-secondary"}`}
+              style={{
+                flexShrink: 0,
+                minHeight: 48,
+                whiteSpace: "nowrap",
+                borderColor: selected ? undefined : group.color,
+              }}
+              onClick={() => setActiveTab(group.status)}
+            >
+              {group.label} <span className="badge text-bg-secondary ms-1">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+      {groups.filter((group) => group.status === activeTab).map((group) => {
         const rows = orders.filter((order) => order.status === group.status);
-        const isExpanded = expanded[group.status];
-        const panelId = `orders-${group.status}`;
         return (
-          <section key={group.status} className="card-estylo mb-3">
-            <h2 className="h5 mb-0">
-              <button type="button" aria-expanded={isExpanded} aria-controls={panelId}
-                className="btn w-100 d-flex justify-content-between align-items-center text-start"
-                style={{ color: group.color, minHeight: 48 }}
-                onClick={() => setExpanded((old) => ({ ...old, [group.status]: !old[group.status] }))}>
-                <span>{group.label} <span className="badge text-bg-secondary ms-2">{rows.length}</span></span>
-                <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
-              </button>
-            </h2>
-            <div id={panelId} hidden={!isExpanded}>
-              {(group.status === "COMPLETED" || group.status === "CANCELLED") &&
-                <p className="small text-secondary mt-3">From the latest 50 completed/cancelled orders.</p>}
-              {!rows.length ? <p className="empty mt-3">No orders in this section.</p> :
-                <div className="order-grid mt-3">
+          <section
+            key={group.status}
+            id={`panel-${group.status}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${group.status}`}
+            className="card-estylo mb-3"
+          >
+            <h2 className="h5 mb-3" style={{ color: group.color }}>{group.label}</h2>
+            {(group.status === "COMPLETED" || group.status === "CANCELLED") && (
+              <p className="small text-secondary">From the latest 50 completed/cancelled orders.</p>
+            )}
+            {!rows.length ? (
+              <p className="empty mt-3">No orders in this section.</p>
+            ) : (
+              <div className="order-grid mt-3">
                   {rows.map((order) => {
                     const cups = order.items.flatMap((item) => Array.from(
                       { length: item.quantity }, (_, index) => ({ key: `${item.id}-${index}`, item })));
@@ -150,8 +177,8 @@ export function OrdersPage() {
                       </article>
                     );
                   })}
-                </div>}
-            </div>
+                </div>
+            )}
           </section>
         );
       })}
