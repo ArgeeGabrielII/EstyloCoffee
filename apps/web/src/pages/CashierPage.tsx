@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import "./CashierHeader.css";
 import { api, money } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { Product, Addon } from "../types";
@@ -203,18 +204,36 @@ export function CashierPage() {
 
   return (
     <div className="pos">
-      <header className="pos-header">
-        <div className="pos-brand">
+      <header className="pos-header cashier-topbar">
+        <div className="pos-brand cashier-topbar-brand">
           <img src="/estylo-logo.png" alt="Estylo Coffee" />
-          <div><b>ESTYLO COFFEE</b><small className="d-block">Cashier workspace</small></div>
-        </div>
-        <div className="pos-user">
-          <span>{user?.displayName}</span>
           <div>
-            <Link className="text-warning me-3" to={user?.role === "ADMIN" ? "/dashboard" : "/orders"}>Management</Link>
-            <button type="button" className="btn btn-sm btn-outline-light"
-              onClick={() => logout().catch((e) => setError(e.message))}>Sign out</button>
+            <b>ESTYLO COFFEE</b>
+            <small className="d-block">Cashier workspace</small>
           </div>
+        </div>
+        <div className="cashier-topbar-right">
+          <span className="cashier-topbar-user" title={user?.displayName}>
+            <i className="bi bi-person-circle" aria-hidden="true" />
+            {user?.displayName}
+          </span>
+          <nav className="cashier-topbar-actions" aria-label="Cashier navigation">
+            <Link to="/orders" className="cashier-nav-btn cashier-nav-primary">
+              <i className="bi bi-receipt" aria-hidden="true" />
+              <span>View Orders</span>
+            </Link>
+            {user?.role === "ADMIN" && (
+              <Link to="/dashboard" className="cashier-nav-btn cashier-nav-secondary">
+                <i className="bi bi-grid-1x2" aria-hidden="true" />
+                <span>Dashboard</span>
+              </Link>
+            )}
+            <button type="button" className="cashier-nav-btn cashier-nav-secondary"
+              onClick={() => logout().catch((e) => setError(e.message))}>
+              <i className="bi bi-box-arrow-right" aria-hidden="true" />
+              <span>Sign out</span>
+            </button>
+          </nav>
         </div>
       </header>
 

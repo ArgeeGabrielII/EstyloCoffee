@@ -1,0 +1,68 @@
+/* Cashier-only responsive navigation; does not affect the rest of Estylo. */
+.pos .cashier-topbar {
+  height: auto;
+  min-height: 78px;
+  padding: 12px clamp(12px, 2.5vw, 28px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.pos .cashier-topbar-brand { min-width: 0; flex-shrink: 0; }
+.pos .cashier-topbar-brand b { font-size: clamp(13px, 1.6vw, 17px); }
+.pos .cashier-topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.pos .cashier-topbar-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #d5c9b7;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pos .cashier-topbar-actions { display: flex; align-items: stretch; gap: 8px; }
+.pos .cashier-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 10px 15px;
+  border-radius: 10px;
+  border: 1px solid #625742;
+  font-size: clamp(13px, 1.2vw, 15px);
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pos .cashier-nav-primary { background: #bd9956; border-color: #bd9956; color: #101010; }
+.pos .cashier-nav-primary:hover { background: #d0aa65; color: #101010; }
+.pos .cashier-nav-secondary { background: #1c1c1c; color: #f3f0e8; }
+.pos .cashier-nav-secondary:hover { background: #2a251e; color: #fff; }
+.pos .cashier-nav-btn:focus-visible { outline: 3px solid #e7c27b; outline-offset: 2px; }
+@media (max-width: 1100px) {
+  .pos .cashier-topbar { align-items: flex-start; }
+  .pos .cashier-topbar-right { flex: 1 1 100%; justify-content: space-between; }
+  .pos .cashier-topbar-actions { margin-left: auto; }
+}
+@media (max-width: 600px) {
+  .pos .cashier-topbar { gap: 10px; padding: 12px; }
+  .pos .cashier-topbar-brand img { width: 42px; height: 42px; }
+  .pos .cashier-topbar-right { display: grid; grid-template-columns: 1fr; gap: 10px; width: 100%; }
+  .pos .cashier-topbar-user { font-size: 13px; }
+  .pos .cashier-topbar-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 8px; }
+  .pos .cashier-nav-btn { width: 100%; padding: 12px 8px; font-size: 14px; white-space: normal; text-align: center; }
+  .pos .cashier-nav-primary { grid-column: 1 / -1; min-height: 54px; }
+  .pos .cashier-topbar-actions > :nth-child(2):last-child { grid-column: 1 / -1; }
+}
