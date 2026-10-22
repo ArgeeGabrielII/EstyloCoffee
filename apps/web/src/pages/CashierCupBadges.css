@@ -1,0 +1,12 @@
+/* Selected cups are counted from the same cart lines shown in Current order. */
+.cashier-drink-tile { position: relative; padding-top: 2.65rem; transition: border-color .15s ease, box-shadow .15s ease; }
+.cashier-drink-tile.cashier-drink-selected { border: 2px solid #d7bd76; box-shadow: inset 0 0 0 1px rgba(215,189,118,.15); }
+.cashier-drink-tile .cashier-cup-badge {
+  position: absolute; top: .65rem; right: .65rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.1rem; height: 2.1rem; padding: 0 .45rem;
+  border-radius: 999px; background: #d7bd76; color: #15120a;
+  font-weight: 800; font-size: 1rem; line-height: 1; font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25); pointer-events: none;
+}
+@media (max-width: 600px) { .cashier-drink-tile { padding-top: 2.8rem; } }

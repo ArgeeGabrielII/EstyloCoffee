@@ -1,41 +1,17 @@
-
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, money } from "../api/client";
 import type { Product, Addon } from "../types";
 import { generateUUID } from "../utils/uuid";
+import "./OnsiteOrderModal.css";
 
-type CartLine = {
-  id: string;
-  productId: string;
-  addons: Record<string, number>;
-};
-
-type MenuResponse = {
-  products: Product[];
-  addons: Addon[];
-};
-
+type CartLine = { id: string; productId: string; addons: Record<string, number> };
+type MenuResponse = { products: Product[]; addons: Addon[] };
 type Receipt = {
-  id: string;
-  customer: string;
-  totalCentavos: number;
-  status: string;
-  payment: string;
-  items: {
-    name: string;
-    quantity: number;
-    unitPriceCentavos: number;
-    addons: {
-      name: string;
-      quantity: number;
-      unitPriceCentavos: number;
-    }[];
-  }[];
+  id: string; queueNumber?: number | null; customer: string;
+  totalCentavos: number; status: string; payment: string;
+  items: { name: string; quantity: number; unitPriceCentavos: number;
+    addons: { name: string; quantity: number; unitPriceCentavos: number }[] }[];
 };
-
-function newKey() {
-  return generateUUID();
-}
 
 export function OnsiteOrderPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,578 +22,248 @@ export function OnsiteOrderPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [addonModalLineId, setAddonModalLineId] = useState<string | null>(null);
+  const [addonDraft, setAddonDraft] = useState<Record<string, number>>({});
   const requestKey = useRef("");
+  const submitting = useRef(false);
 
   useEffect(() => {
     let active = true;
-
-    async function loadMenu() {
-      try {
-        const data = await api<MenuResponse>("/onsite/menu");
-        if (active) {
-          setProducts(data.products);
-          setAddons(data.addons);
-        }
-      } catch (e) {
-        if (active) {
-          setError(
-            e instanceof Error ? e.message : "Unable to load menu"
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    void loadMenu();
+    api<MenuResponse>("/onsite/menu")
+      .then(data => { if (active) { setProducts(data.products); setAddons(data.addons); } })
+      .catch(e => { if (active) setError(e instanceof Error ? e.message : "Unable to load menu"); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
-  function changed() {
-    requestKey.current = "";
-    setError("");
-  }
-
-  function cupTotal(line: CartLine) {
-    const product = products.find(
-      (p) => p.id === line.productId
-    );
-
-    const base = product?.priceCentavos ?? 0;
-
-    const extras = addons.reduce(
-      (sum, addon) =>
-        sum +
-        addon.priceCentavos * (line.addons[addon.id] ?? 0),
-      0
-    );
-
-    return base + extras;
-  }
-
-  const total = cart.reduce(
-    (sum, line) => sum + cupTotal(line),
-    0
-  );
+  function changed() { requestKey.current = ""; setError(""); }
+  const activeAddons = addons.filter(a => a.active);
+  const selectedLine = cart.find(line => line.id === addonModalLineId);
+  const selectedProduct = products.find(p => p.id === selectedLine?.productId);
+  const productFor = (line: CartLine) => products.find(p => p.id === line.productId);
+  const cupTotal = (line: CartLine) =>
+    (productFor(line)?.priceCentavos ?? 0) + addons.reduce(
+      (sum, a) => sum + a.priceCentavos * (line.addons[a.id] || 0), 0);
+  const total = cart.reduce((sum, line) => sum + cupTotal(line), 0);
+  const draftCupTotal = (selectedProduct?.priceCentavos ?? 0) + addons.reduce(
+    (sum, a) => sum + a.priceCentavos * (addonDraft[a.id] || 0), 0);
+  const counts = cart.reduce<Record<string, number>>((acc, line) => {
+    acc[line.productId] = (acc[line.productId] || 0) + 1;
+    return acc;
+  }, {});
 
   function addCup(productId: string) {
-    if (busy) return;
-
-    if (cart.length >= 50) {
-      setError("Maximum of 50 cups per order.");
-      return;
-    }
-
-    changed();
-    setCart((previous) => [
-      ...previous,
-      {
-        id: newKey(),
-        productId,
-        addons: {},
-      },
-    ]);
-  }
-
-  function removeCup(id: string) {
-    changed();
-    setCart((previous) =>
-      previous.filter((line) => line.id !== id)
-    );
-  }
-
-  function updateAddon(
-    lineId: string,
-    addonId: string,
-    quantity: number
-  ) {
-    changed();
-
-    const safeQuantity = Math.min(
-      99,
-      Math.max(0, Math.floor(Number(quantity) || 0))
-    );
-
-    setCart((previous) =>
-      previous.map((line) =>
-        line.id === lineId
-          ? {
-              ...line,
-              addons: {
-                ...line.addons,
-                [addonId]: safeQuantity,
-              },
-            }
-          : line
-      )
-    );
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-
     if (busy || receipt) return;
-
-    if (!customer.trim()) {
-      setError("Please enter your name.");
-      return;
-    }
-
-    if (!cart.length) {
-      setError("Please select at least one coffee.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Place ${cart.length} cup(s) for ${money(total)}?\n\n` +
-      "Please pay at the cashier."
-    );
-
-    if (!confirmed) return;
-
+    if (cart.length >= 50) { setError("Maximum of 50 cups per order."); return; }
+    changed();
+    setCart(prev => [...prev, { id: generateUUID(), productId, addons: {} }]);
+  }
+  function removeCup(id: string) {
+    if (busy) return;
+    changed();
+    setCart(prev => prev.filter(line => line.id !== id));
+    if (addonModalLineId === id) setAddonModalLineId(null);
+  }
+  function openAddons(line: CartLine) {
+    if (busy || !activeAddons.length) return;
+    setAddonDraft({ ...line.addons });
+    setAddonModalLineId(line.id);
+  }
+  function adjustAddon(id: string, delta: number) {
+    setAddonDraft(prev => ({ ...prev, [id]: Math.min(99, Math.max(0, (prev[id] || 0) + delta)) }));
+  }
+  function saveAddons() {
+    if (!addonModalLineId || busy) return;
+    changed();
+    setCart(prev => prev.map(line => line.id === addonModalLineId
+      ? { ...line, addons: { ...addonDraft } } : line));
+    setAddonModalLineId(null);
+  }
+  function reviewOrder(event: FormEvent) {
+    event.preventDefault();
+    if (busy || submitting.current || receipt) return;
+    if (!customer.trim()) { setError("Please enter your name."); return; }
+    if (!cart.length) { setError("Please select at least one coffee."); return; }
+    setError("");
+    setReviewOpen(true);
+  }
+  async function confirmOrder() {
+    if (busy || submitting.current || !reviewOpen || !cart.length || !customer.trim()) return;
+    submitting.current = true;
     setBusy(true);
     setError("");
-
-    if (!requestKey.current) {
-      requestKey.current = newKey();
-    }
-
+    requestKey.current ||= generateUUID();
     try {
       const result = await api<Receipt>("/onsite/orders", {
         method: "POST",
-        headers: {
-          "Idempotency-Key": requestKey.current,
-        },
+        headers: { "Idempotency-Key": requestKey.current },
         body: JSON.stringify({
           customer: customer.trim(),
-          items: cart.map((line) => ({
+          items: cart.map(line => ({
             productId: line.productId,
             quantity: 1,
             addons: Object.entries(line.addons)
               .filter(([, quantity]) => quantity > 0)
-              .map(([addonId, quantity]) => ({
-                addonId,
-                quantity,
-              })),
+              .map(([addonId, quantity]) => ({ addonId, quantity })),
           })),
         }),
       });
-
       setReceipt(result);
+      setReviewOpen(false);
+      setAddonModalLineId(null);
       setCart([]);
+      requestKey.current = "";
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Unable to place order"
-      );
+      setError(e instanceof Error ? e.message : "Unable to place order");
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
-
   function newOrder() {
-    setReceipt(null);
-    setCart([]);
-    setCustomer("");
-    requestKey.current = "";
-    setError("");
+    setReceipt(null); setCart([]); setCustomer(""); setReviewOpen(false);
+    setAddonModalLineId(null); setAddonDraft({}); requestKey.current = ""; setError("");
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        background: "#121212",
-        color: "#fff",
-      }}
-    >
-      <header
-        style={{
-          background: "#1d1d1d",
-          borderBottom: "1px solid #444",
-          padding: "20px 24px",
-          textAlign: "center",
-        }}
-      >
-        <img
-          src="/estylo-logo.png"
-          alt="Estylo Coffee"
-          style={{
-            width: 76,
-            height: 76,
-            objectFit: "contain",
-          }}
-        />
-        <h2 className="mt-2 mb-1">ESTYLO COFFEE</h2>
-        <p style={{ color: "#d7bd76", margin: 0 }}>
-          Onsite Ordering
-        </p>
+    <div className="onsite-page">
+      <header className="onsite-header">
+        <img src="/estylo-logo.png" alt="Estylo Coffee" />
+        <h2>ESTYLO COFFEE</h2>
+        <p>Onsite Ordering</p>
       </header>
-
-      <main
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "24px 16px 64px",
-        }}
-      >
-        {error && (
-          <div className="alert alert-danger" role="alert">
-            {error}
-          </div>
-        )}
-
+      <main className="onsite-main">
+        {error && <div className="alert alert-danger" role="alert">{error}</div>}
         {receipt ? (
-          <section
-            className="card p-4 mx-auto"
-            style={{
-              maxWidth: 580,
-              background: "#222",
-              color: "#fff",
-              border: "1px solid #555",
-            }}
-          >
-            <div className="text-center">
-              <div style={{ fontSize: 42 }}>☕</div>
-              <h2>Order Received!</h2>
-              <p>
-                Thank you, <strong>{receipt.customer}</strong>.
-              </p>
-              <p style={{ color: "#d7bd76" }}>
-                Please proceed to the cashier for payment.
-              </p>
-            </div>
-
+          <section className="onsite-receipt">
+            <h2>Order Received!</h2>
+            <p>Thank you, <strong>{receipt.customer}</strong>.</p>
+            <p className="onsite-gold">Please proceed to the cashier for payment.</p>
+            {receipt.queueNumber != null && <><small>QUEUE NUMBER</small><h1>#{String(receipt.queueNumber).padStart(3, "0")}</h1></>}
+            <small>ORDER REFERENCE</small><h3>{receipt.id.slice(0, 8).toUpperCase()}</h3>
             <hr />
-
-            <div className="mb-3">
-              <small>ORDER REFERENCE</small>
-              <h3>{receipt.id.slice(0, 8).toUpperCase()}</h3>
-            </div>
-
             {receipt.items.map((item, index) => {
-              const extras = item.addons.reduce(
-                (sum, addon) =>
-                  sum +
-                  addon.quantity * addon.unitPriceCentavos,
-                0
-              );
-
-              return (
-                <div key={index} className="mb-3">
-                  <div className="d-flex justify-content-between">
-                    <strong>
-                      {item.quantity} × {item.name}
-                    </strong>
-                    <span>
-                      {money(
-                        item.quantity *
-                        (item.unitPriceCentavos + extras)
-                      )}
-                    </span>
-                  </div>
-                  {item.addons.map((addon, i) => (
-                    <small
-                      key={i}
-                      className="d-block text-secondary"
-                    >
-                      + {addon.name} × {addon.quantity}
-                    </small>
-                  ))}
-                </div>
-              );
+              const extras = item.addons.reduce((sum, a) => sum + a.quantity * a.unitPriceCentavos, 0);
+              return <div className="onsite-receipt-item" key={index}>
+                <div className="onsite-between"><strong>{item.quantity} × {item.name}</strong>
+                  <strong>{money(item.quantity * (item.unitPriceCentavos + extras))}</strong></div>
+                {item.addons.map((a, i) => <small key={i}>+ {a.name} × {a.quantity}</small>)}
+              </div>;
             })}
-
             <hr />
-
-            <div className="d-flex justify-content-between">
-              <h4>Total Amount</h4>
-              <h3 style={{ color: "#d7bd76" }}>
-                {money(receipt.totalCentavos)}
-              </h3>
-            </div>
-
-            <p className="mt-3">
-              Payment: <strong>UNPAID</strong>
-            </p>
-
-            <p className="small text-secondary">
-              Keep this screen open or take a screenshot
-              of your order reference.
-            </p>
-
-            <button
-              type="button"
-              className="btn btn-warning w-100 mt-3"
-              onClick={newOrder}
-            >
-              Place Another Order
-            </button>
-
-            <a
-              href="/queue"
-              className="btn btn-outline-light w-100 mt-2"
-            >
-              View Coffee Queue
-            </a>
+            <div className="onsite-between"><h4>Total Amount</h4><h3 className="onsite-gold">{money(receipt.totalCentavos)}</h3></div>
+            <p>Payment: <strong>UNPAID</strong></p>
+            <p className="onsite-muted">Keep this screen open or take a screenshot of your order reference.</p>
+            <button type="button" className="btn btn-warning w-100 mt-3" onClick={newOrder}>Place Another Order</button>
+            <a href="/queue" className="btn btn-outline-light w-100 mt-2">View Coffee Queue</a>
           </section>
-        ) : (
-          <>
-            <div className="mb-4">
-              <h2>Order Your Coffee</h2>
-              <p style={{ color: "#bbb" }}>
-                Choose your drinks, customize each cup,
-                and review the total before ordering.
-              </p>
-            </div>
-
-            <div className="row g-4">
-              <section className="col-12 col-lg-7">
-                <div
-                  className="card p-3"
-                  style={{
-                    background: "#222",
-                    color: "#fff",
-                    borderColor: "#444",
-                  }}
-                >
-                  <h4 className="mb-3">Coffee Menu</h4>
-
-                  {loading ? (
-                    <p>Loading menu...</p>
-                  ) : (
-                    <div className="row g-3">
-                      {products.map((product) => (
-                        <div
-                          className="col-6 col-md-4"
-                          key={product.id}
-                        >
-                          <button
-                            type="button"
-                            className="btn w-100 h-100 text-start"
-                            disabled={busy}
-                            onClick={() => addCup(product.id)}
-                            style={{
-                              background: "#303030",
-                              color: "#fff",
-                              border: "1px solid #575757",
-                              minHeight: 125,
-                              padding: 16,
-                            }}
-                          >
-                            <strong className="d-block mb-3">
-                              {product.name}
-                            </strong>
-
-                            <span
-                              style={{
-                                color: "#d7bd76",
-                                fontWeight: 700,
-                              }}
-                            >
-                              {money(product.priceCentavos ?? 0)}
-                            </span>
-
-                            <small className="d-block mt-2">
-                              + Add cup
-                            </small>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {!loading && products.length === 0 && (
-                    <p>No coffee available at the moment.</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="col-12 col-lg-5">
-                <form
-                  onSubmit={submit}
-                  className="card p-3"
-                  style={{
-                    background: "#222",
-                    color: "#fff",
-                    borderColor: "#444",
-                  }}
-                >
-                  <h4>Your Order</h4>
-
-                  <p style={{ color: "#bbb" }}>
-                    {cart.length} cup(s) selected
-                  </p>
-
-                  {cart.length === 0 && (
-                    <p style={{ color: "#bbb" }}>
-                      Tap a coffee from the menu to get started.
-                    </p>
-                  )}
-
-                  {cart.map((line, index) => {
-                    const product = products.find(
-                      (p) => p.id === line.productId
-                    );
-
-                    return (
-                      <div
-                        key={line.id}
-                        className="py-3"
-                        style={{
-                          borderBottom: "1px solid #444",
-                        }}
-                      >
-                        <div className="d-flex justify-content-between gap-2">
-                          <div>
-                            <strong>
-                              Cup {index + 1}: {product?.name}
-                            </strong>
-                            <small
-                              className="d-block"
-                              style={{ color: "#bbb" }}
-                            >
-                              {money(product?.priceCentavos ?? 0)}
-                            </small>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger"
-                            disabled={busy}
-                            onClick={() => removeCup(line.id)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-
-                        {addons.length > 0 && (
-                          <div className="mt-3">
-                            <small
-                              style={{ color: "#d7bd76" }}
-                            >
-                              Customize this cup
-                            </small>
-
-                            {addons.map((addon) => (
-                              <label
-                                key={addon.id}
-                                className="d-flex align-items-center justify-content-between gap-2 mt-2"
-                              >
-                                <span className="small">
-                                  {addon.name}
-                                  <small
-                                    className="d-block"
-                                    style={{ color: "#bbb" }}
-                                  >
-                                    + {money(addon.priceCentavos)}
-                                  </small>
-                                </span>
-
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={99}
-                                  step={1}
-                                  className="form-control"
-                                  style={{ width: 75 }}
-                                  disabled={busy}
-                                  aria-label={`${addon.name} quantity`}
-                                  value={line.addons[addon.id] ?? 0}
-                                  onChange={(event) =>
-                                    updateAddon(
-                                      line.id,
-                                      addon.id,
-                                      Number(event.target.value)
-                                    )
-                                  }
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="text-end mt-3">
-                          <strong>
-                            Cup Total: {money(cupTotal(line))}
-                          </strong>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  <div
-                    className="d-flex justify-content-between align-items-center py-4"
-                  >
-                    <h4 className="mb-0">Total</h4>
-                    <h3
-                      className="mb-0"
-                      style={{ color: "#d7bd76" }}
-                    >
-                      {money(total)}
-                    </h3>
+        ) : <>
+          <div className="onsite-intro"><div><h2>Order Your Coffee</h2><p>Choose your drinks, customize each cup, and review before ordering.</p></div>
+            <span className="onsite-cart-pill"><i className="bi bi-cup-hot" /> {cart.length} cups</span></div>
+          <div className="onsite-layout">
+            <section className="onsite-panel">
+              <h4>Coffee Menu</h4>
+              {loading ? <p>Loading menu...</p> : <div className="onsite-products">
+                {products.filter(p => p.active).map(product => {
+                  const count = counts[product.id] || 0;
+                  return <button type="button" key={product.id}
+                    className={`onsite-tile${count ? " onsite-tile-selected" : ""}`}
+                    disabled={busy || !product.priceCentavos}
+                    aria-label={`Add one ${product.name}; ${count} already selected`}
+                    onClick={() => addCup(product.id)}>
+                    {count > 0 && <span className="onsite-count-badge" aria-label={`${count} selected`}>{count}</span>}
+                    <strong>{product.name}</strong>
+                    <span className="onsite-gold">{product.priceCentavos ? money(product.priceCentavos) : "Price not configured"}</span>
+                    <small>+ Add cup</small>
+                  </button>;
+                })}
+              </div>}
+              {!loading && !products.some(p => p.active) && <p>No coffee available at the moment.</p>}
+            </section>
+            <form className="onsite-panel onsite-order" onSubmit={reviewOrder}>
+              <h4>Your Order</h4><p className="onsite-muted">{cart.length} cup(s) selected</p>
+              {!cart.length && <p className="onsite-muted">Tap a coffee from the menu to get started.</p>}
+              {cart.map((line, index) => {
+                const product = productFor(line);
+                const chosen = activeAddons.filter(a => (line.addons[a.id] || 0) > 0);
+                const addonCount = chosen.reduce((sum, a) => sum + line.addons[a.id], 0);
+                return <div key={line.id} className="onsite-cup">
+                  <div className="onsite-between onsite-cup-top">
+                    <div><strong>Cup {index + 1} — {product?.name}</strong><small>{money(product?.priceCentavos ?? 0)} base</small></div>
+                    <button type="button" className="btn btn-outline-danger" disabled={busy} onClick={() => removeCup(line.id)}>Remove</button>
                   </div>
-
-                  <label
-                    className="form-label"
-                    htmlFor="onsite-customer"
-                  >
-                    Name for your order
-                  </label>
-
-                  <input
-                    id="onsite-customer"
-                    type="text"
-                    required
-                    maxLength={100}
-                    className="form-control"
-                    placeholder="Enter your name"
-                    value={customer}
-                    disabled={busy}
-                    onChange={(e) => {
-                      changed();
-                      setCustomer(e.target.value);
-                    }}
-                  />
-
-                  <p
-                    className="small mt-3"
-                    style={{ color: "#bbb" }}
-                  >
-                    No phone number or account required.
-                    Payment will be handled at the cashier.
-                  </p>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      busy || loading || cart.length === 0
-                    }
-                    className="btn btn-warning btn-lg w-100 mt-2"
-                  >
-                    {busy
-                      ? "Placing Order..."
-                      : `Place Order — ${money(total)}`}
-                  </button>
-
-                  {cart.length > 0 && (
-                    <button
-                      type="button"
-                      className="btn btn-outline-light mt-2"
-                      disabled={busy}
-                      onClick={() => {
-                        changed();
-                        setCart([]);
-                      }}
-                    >
-                      Clear Cart
-                    </button>
-                  )}
-                </form>
-              </section>
-            </div>
-          </>
-        )}
+                  <div className="onsite-between onsite-cup-bottom">
+                    <button type="button" className="btn btn-outline-warning" disabled={busy || !activeAddons.length}
+                      onClick={() => openAddons(line)}>Add-ons {addonCount > 0 && <span className="onsite-addon-count">{addonCount}</span>}</button>
+                    <strong>{money(cupTotal(line))}</strong>
+                  </div>
+                  <small className="onsite-muted">{chosen.length ? chosen.map(a => `${a.name} × ${line.addons[a.id]}`).join(" · ") : "No add-ons selected"}</small>
+                </div>;
+              })}
+              <div className="onsite-between onsite-total"><h4>Total</h4><h3 className="onsite-gold">{money(total)}</h3></div>
+              <label htmlFor="onsite-customer" className="form-label">Name for your order</label>
+              <input id="onsite-customer" className="form-control" required maxLength={100}
+                placeholder="Enter your name" disabled={busy} value={customer}
+                onChange={e => { changed(); setCustomer(e.target.value); }} />
+              <p className="onsite-muted mt-3">No phone number or account required. Payment will be handled at the cashier.</p>
+              <button type="submit" className="btn btn-warning btn-lg w-100 mt-2" disabled={busy || loading || !cart.length}>
+                Review Order — {money(total)}
+              </button>
+              {cart.length > 0 && <button type="button" className="btn btn-outline-light w-100 mt-2" disabled={busy}
+                onClick={() => { changed(); setCart([]); }}>Clear Cart</button>}
+            </form>
+          </div>
+        </>}
       </main>
+
+      {addonModalLineId && selectedLine && !receipt && <div className="onsite-modal-backdrop"
+        onClick={e => { if (e.target === e.currentTarget && !busy) setAddonModalLineId(null); }}>
+        <section className="onsite-modal" role="dialog" aria-modal="true" aria-labelledby="onsite-addons-title">
+          <header className="onsite-modal-header"><div><h4 id="onsite-addons-title">Add-ons for Cup {cart.findIndex(l => l.id === selectedLine.id) + 1}</h4>
+            <p>{selectedProduct?.name} · Tap + or − to adjust add-ons.</p></div>
+            <button type="button" className="onsite-close" disabled={busy} aria-label="Close add-ons" onClick={() => setAddonModalLineId(null)}>×</button></header>
+          <div className="onsite-modal-list">{activeAddons.map(a => {
+            const quantity = addonDraft[a.id] || 0;
+            return <div className="onsite-addon-option" key={a.id}>
+              <div><strong>{a.name}</strong><small>{money(a.priceCentavos)} each</small></div>
+              <div className="onsite-qty-controls">
+                <button type="button" disabled={busy || quantity === 0} aria-label={`Remove one ${a.name}`} onClick={() => adjustAddon(a.id, -1)}>−</button>
+                <strong>{quantity}</strong>
+                <button type="button" disabled={busy || quantity >= 99} aria-label={`Add one ${a.name}`} onClick={() => adjustAddon(a.id, 1)}>+</button>
+              </div>
+            </div>;
+          })}</div>
+          <footer className="onsite-modal-footer"><div className="onsite-between"><strong>Cup total</strong><strong className="onsite-gold">{money(draftCupTotal)}</strong></div>
+            <div className="onsite-modal-actions"><button type="button" className="btn btn-outline-light" disabled={busy} onClick={() => setAddonModalLineId(null)}>Cancel</button>
+              <button type="button" className="btn btn-warning" disabled={busy} onClick={saveAddons}>Save add-ons</button></div></footer>
+        </section>
+      </div>}
+
+      {reviewOpen && !receipt && <div className="onsite-modal-backdrop">
+        <section className="onsite-modal" role="dialog" aria-modal="true" aria-labelledby="onsite-review-title">
+          <header className="onsite-modal-header"><div><h4 id="onsite-review-title">Review & Confirm Order</h4><p>Nothing is submitted until you tap Confirm Order.</p></div>
+            <button type="button" className="onsite-close" disabled={busy} aria-label="Back to edit" onClick={() => setReviewOpen(false)}>×</button></header>
+          <div className="onsite-modal-list">
+            <p><strong>Customer:</strong> {customer.trim()}</p>
+            <p className="onsite-gold">Please pay at the cashier after placing your order.</p>
+            {cart.map((line, index) => {
+              const chosen = addons.filter(a => (line.addons[a.id] || 0) > 0);
+              return <div key={line.id} className="onsite-review-cup"><div className="onsite-between"><strong>Cup {index + 1} — {productFor(line)?.name}</strong><strong>{money(cupTotal(line))}</strong></div>
+                {chosen.map(a => <small key={a.id}>+ {a.name} × {line.addons[a.id]} — {money(a.priceCentavos * line.addons[a.id])}</small>)}
+              </div>;
+            })}
+            <div className="onsite-between"><strong>Total cups</strong><strong>{cart.length}</strong></div>
+            <div className="onsite-between"><strong>Grand total</strong><strong className="onsite-gold">{money(total)}</strong></div>
+            {error && <div role="alert" className="alert alert-danger mt-3">{error}</div>}
+          </div>
+          <footer className="onsite-modal-footer"><div className="onsite-modal-actions">
+            <button type="button" className="btn btn-outline-light" disabled={busy} onClick={() => { setReviewOpen(false); setError(""); }}>Back to Edit</button>
+            <button type="button" className="btn btn-warning" disabled={busy} onClick={confirmOrder}>{busy ? "Placing Order…" : "Confirm Order"}</button>
+          </div></footer>
+        </section>
+      </div>}
     </div>
   );
 }

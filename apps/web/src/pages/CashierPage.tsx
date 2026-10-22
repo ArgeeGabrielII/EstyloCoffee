@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import "./CashierHeader.css";
+import "./CashierCupBadges.css";
 import { api, money } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { Product, Addon } from "../types";
@@ -251,13 +252,23 @@ export function CashierPage() {
           <h2 className="mb-4">Make someone's day.</h2>
           <p>Tap a drink to add one separately customizable cup.</p>
           <div className="product-grid">
-            {products.filter((p) => p.active).map((p) => (
-              <button type="button" disabled={busy || !p.priceCentavos} className="tile" key={p.id}
-                onClick={() => addCup(p.id)}>
-                <strong>{p.name}</strong>
-                <span>{p.priceCentavos ? money(p.priceCentavos) : "Price not configured"}</span>
-              </button>
-            ))}
+            {products.filter((p) => p.active).map((p) => {
+              const selectedCups = cart.filter((line) => line.productId === p.id).length;
+              return (
+                <button type="button" disabled={busy || !p.priceCentavos}
+                  className={`tile cashier-drink-tile${selectedCups ? " cashier-drink-selected" : ""}`}
+                  key={p.id} onClick={() => addCup(p.id)}
+                  aria-label={`${p.name}, ${selectedCups} cup${selectedCups === 1 ? "" : "s"} selected. Add one cup.`}>
+                  {selectedCups > 0 && (
+                    <span className="cashier-cup-badge" aria-label={`${selectedCups} selected cups`}>
+                      {selectedCups}
+                    </span>
+                  )}
+                  <strong>{p.name}</strong>
+                  <span>{p.priceCentavos ? money(p.priceCentavos) : "Price not configured"}</span>
+                </button>
+              );
+            })}
           </div>
           {!products.some((p) => p.active) && <p className="empty">No menu available.</p>}
         </section>
