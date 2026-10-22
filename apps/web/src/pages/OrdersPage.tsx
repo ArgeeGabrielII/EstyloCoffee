@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, money } from "../api/client";
 import { Order, Status } from "../types";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
@@ -166,7 +165,7 @@ export function OrdersPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <div>
           <div className="text-secondary small">{order.id.slice(0, 8)} · {new Date(order.createdAt).toLocaleString()}</div>
-          {order.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+          {order.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2rem, 5vw, 3rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
           <h3 className="h5 mt-2 mb-1">{order.customer}</h3>
         </div>
         <div className="text-end">
@@ -200,23 +199,27 @@ export function OrdersPage() {
   }
 
   return <div className="page">
-    <div className="page-title">
-      <div><h1>Cashier &amp; Barista Orders</h1><p>Orders update automatically every 3 seconds.</p></div>
-      <Link to="/queue" target="_blank" rel="noopener noreferrer" className="btn btn-estylo">Open public display</Link>
-    </div>
-    {(error || actionError) && <div role="alert" className="alert alert-danger">{actionError || error}</div>}
-    <p className="small text-secondary">{loading ? "Loading orders…" : updatedAt ? `Last updated: ${updatedAt.toLocaleTimeString()}` : "Waiting for connection…"}</p>
-    <section className="card-estylo mb-3" aria-label="Current order date">
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <header className="card-estylo mb-3" aria-label="Today's orders overview"
+      style={{ padding: "14px 18px" }}>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
-          <strong className="d-block fs-5">Today's Orders</strong>
-          <span className="text-secondary">{new Intl.DateTimeFormat("en-PH", {
+          <h1 className="h4 fw-bold mb-1">Cashier &amp; Barista Orders</h1>
+          <div className="small text-secondary">{new Intl.DateTimeFormat("en-PH", {
             timeZone: "Asia/Manila", dateStyle: "full",
-          }).format(now)} · Philippine time</span>
+          }).format(now)} · Philippine time</div>
         </div>
-        <span className="badge text-bg-secondary fs-6">{todayOrders.length} orders today</span>
+        <div className="d-flex flex-column align-items-start align-items-sm-end gap-1">
+          <span className="badge text-bg-secondary fs-6">{todayOrders.length} orders today</span>
+          <span className="small text-secondary" aria-live="off">
+            <i className="bi bi-arrow-clockwise me-1" aria-hidden="true" />
+            {loading ? "Loading orders…" : updatedAt
+              ? `Updated ${updatedAt.toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })} · Every 3s`
+              : "Waiting for connection…"}
+          </span>
+        </div>
       </div>
-    </section>
+    </header>
+    {(error || actionError) && <div role="alert" className="alert alert-danger">{actionError || error}</div>}
     {previousPending.length > 0 && <div className="alert alert-warning mb-3" role="alert" aria-live="polite">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
@@ -265,7 +268,7 @@ export function OrdersPage() {
               }}>UNPAID</span>}
               <div style={{ position: "relative", zIndex: 1 }}>
                 <small>{new Date(order.createdAt).toLocaleString()}</small>
-                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(2rem, 4vw, 2.50rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
                 <h3 className="h5 mt-2 mb-2">{order.customer}</h3>
                 <span className={`badge ${order.payment === "PAID" ? "text-bg-success" : "text-bg-warning"}`}>{order.payment}</span>
                 <p className="mt-2 mb-1">{order.items.reduce((n, item) => n + item.quantity, 0)} cup(s) · {order.fulfillment}</p>
@@ -304,7 +307,7 @@ export function OrdersPage() {
               }}>UNPAID</span>}
               <div style={{ position: "relative", zIndex: 1 }}>
                 <small>{new Date(order.createdAt).toLocaleString()}</small>
-                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(2rem, 4vw, 2.75rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
                 <h3 className="h5 mt-2 mb-2">{order.customer}</h3>
                 <span className={`badge ${order.payment === "PAID" ? "text-bg-success" : "text-bg-warning"}`}>{order.payment}</span>
                 <p className="mt-2 mb-1">{order.items.reduce((n, item) => n + item.quantity, 0)} cup(s) · {order.fulfillment}</p>
@@ -350,7 +353,7 @@ export function OrdersPage() {
           </div>
           <div className="modal-body">
             {cancelRequest.queueNumber != null && <div className="fw-bold text-warning"
-              style={{ fontSize: "clamp(2.25rem, 5vw, 3.00rem)", lineHeight: 1.1 }}>
+              style={{ fontSize: "clamp(2rem, 5vw, 3rem)", lineHeight: 1.1 }}>
               Queue #{String(cancelRequest.queueNumber).padStart(3, "0")}
             </div>}
             <p className="fs-5 fw-semibold mt-2 mb-1">{cancelRequest.customer}</p>
@@ -386,7 +389,7 @@ export function OrdersPage() {
             <button type="button" className="btn-close" disabled={busy} aria-label="Close" onClick={() => setPaymentOrder(null)} />
           </div>
           <div className="modal-body">
-            {paymentOrder.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1 }}>Queue #{String(paymentOrder.queueNumber).padStart(3, "0")}</div>}
+            {paymentOrder.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2rem, 5vw, 3rem)", lineHeight: 1.1 }}>Queue #{String(paymentOrder.queueNumber).padStart(3, "0")}</div>}
             <p className="mt-2 mb-1 fs-5 fw-semibold">{paymentOrder.customer}</p>
             <p className="fs-2 fw-bold">{money(paymentOrder.totalCentavos)}</p>
             <p className="fw-bold mb-2">Tap a payment method</p>
