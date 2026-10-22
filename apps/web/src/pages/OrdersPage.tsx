@@ -20,7 +20,7 @@ const nextSteps: Record<Status, Status[]> = {
   CANCELLED: [],
 };
 const actionLabels: Record<Status, string> = {
-  NEW: "New", PREPARING: "Start Preparing", READY: "Mark Ready",
+  NEW: "New", PREPARING: "Start Preparing", READY: "Ready for PickUp",
   COMPLETED: "Complete Order", CANCELLED: "Cancel Order",
 };
 
@@ -90,7 +90,7 @@ export function OrdersPage() {
     } finally { setBusy(false); }
   }
   async function voidOrder(order: Order) {
-    if (busy || order.status === "CANCELLED") return;
+    if (busy || order.status !== "NEW") return;
     const warning = order.payment === "PAID"
       ? "This removes the transaction from sales reports but does NOT refund the customer.\n\n" : "";
     if (!window.confirm(`Void transaction ${order.id.slice(0, 8)} for ${money(order.totalCentavos)}?\n\n` +
@@ -109,14 +109,14 @@ export function OrdersPage() {
     return <div className="d-flex flex-wrap gap-2 mt-3">
       {order.payment === "UNPAID" && order.status !== "CANCELLED" &&
         <button type="button" disabled={busy} className="btn btn-estylo fw-bold" style={{ minHeight: 48 }}
-          onClick={() => openPayment(order)}>Mark Paid</button>}
+          onClick={() => openPayment(order)}>Confirm Payment</button>}
       {nextSteps[order.status].map(status =>
         <button type="button" key={status} className="btn btn-outline-secondary fw-semibold"
           style={{ minHeight: 48 }}
           disabled={busy || (status === "COMPLETED" && order.payment !== "PAID") ||
             (status === "CANCELLED" && order.payment === "PAID")}
           onClick={() => update(order, { status })}>{actionLabels[status]}</button>)}
-      {order.status !== "CANCELLED" &&
+      {order.status === "NEW" &&
         <button type="button" className="btn btn-danger fw-semibold" style={{ minHeight: 48 }}
           disabled={busy} onClick={() => voidOrder(order)}>Void Transaction</button>}
     </div>;
@@ -127,8 +127,8 @@ export function OrdersPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <div>
           <div className="text-secondary small">{order.id.slice(0, 8)} · {new Date(order.createdAt).toLocaleString()}</div>
-          <h3 className="h4 mb-1">{order.customer}</h3>
-          {order.queueNumber != null && <strong>Queue #{String(order.queueNumber).padStart(3, "0")}</strong>}
+          {order.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+          <h3 className="h5 mt-2 mb-1">{order.customer}</h3>
         </div>
         <div className="text-end">
           <span className={`badge fs-6 ${order.payment === "PAID" ? "text-bg-success" : "text-bg-warning"}`}>{order.payment}</span>
@@ -203,8 +203,8 @@ export function OrdersPage() {
               }}>UNPAID</span>}
               <div style={{ position: "relative", zIndex: 1 }}>
                 <small>{new Date(order.createdAt).toLocaleString()}</small>
-                <h3 className="mt-2">{order.queueNumber != null &&
-                  <span className="text-warning">Queue #{String(order.queueNumber).padStart(3, "0")}<br /></span>}{order.customer}</h3>
+                {order.queueNumber != null && <div className="fw-bold text-warning mt-2" style={{ fontSize: "clamp(2rem, 4vw, 2.75rem)", lineHeight: 1.1, letterSpacing: "-.025em" }}>Queue #{String(order.queueNumber).padStart(3, "0")}</div>}
+                <h3 className="h5 mt-2 mb-2">{order.customer}</h3>
                 <span className={`badge ${order.payment === "PAID" ? "text-bg-success" : "text-bg-warning"}`}>{order.payment}</span>
                 <p className="mt-2 mb-1">{order.items.reduce((n, item) => n + item.quantity, 0)} cup(s) · {order.fulfillment}</p>
                 <strong className="d-block mt-2 fs-5">{money(order.totalCentavos)}</strong>
@@ -216,7 +216,8 @@ export function OrdersPage() {
     })}
 
     {detailId && detailOrder && <div className="modal d-block" role="dialog" aria-modal="true"
-      aria-labelledby="order-detail-title" style={{ background: "rgba(0,0,0,.7)", zIndex: 1900 }}>
+      aria-labelledby="order-detail-title" style={{ background: "rgba(0,0,0,.7)", zIndex: 1900 }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) setDetailId(null); }}>
       <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div className="modal-content" style={{ borderRadius: 16, maxHeight: "92dvh" }}>
           <div className="modal-header">
@@ -235,7 +236,8 @@ export function OrdersPage() {
     </div>}
 
     {paymentOrder && <div className="modal d-block" role="dialog" aria-modal="true"
-      aria-labelledby="payment-modal-title" style={{ background: "rgba(0,0,0,.78)", zIndex: 2000 }}>
+      aria-labelledby="payment-modal-title" style={{ background: "rgba(0,0,0,.78)", zIndex: 2000 }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) setPaymentOrder(null); }}>
       <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div className="modal-content" style={{ borderRadius: 16 }}>
           <div className="modal-header">
@@ -243,8 +245,8 @@ export function OrdersPage() {
             <button type="button" className="btn-close" disabled={busy} aria-label="Close" onClick={() => setPaymentOrder(null)} />
           </div>
           <div className="modal-body">
-            <p className="mb-1 fw-semibold">{paymentOrder.customer}{paymentOrder.queueNumber != null &&
-              ` · Queue #${String(paymentOrder.queueNumber).padStart(3, "0")}`}</p>
+            {paymentOrder.queueNumber != null && <div className="fw-bold text-warning" style={{ fontSize: "clamp(2.25rem, 5vw, 3.25rem)", lineHeight: 1.1 }}>Queue #{String(paymentOrder.queueNumber).padStart(3, "0")}</div>}
+            <p className="mt-2 mb-1 fs-5 fw-semibold">{paymentOrder.customer}</p>
             <p className="fs-2 fw-bold">{money(paymentOrder.totalCentavos)}</p>
             <p className="fw-bold mb-2">Tap a payment method</p>
             <div className="row g-3" role="group" aria-label="Payment methods">

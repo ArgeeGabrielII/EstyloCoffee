@@ -114,8 +114,8 @@ export class CoffeeService {
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
       if (!old) throw new NotFoundException();
-      if (old.status === "CANCELLED") {
-        throw new BadRequestException("Transaction is already cancelled or voided");
+      if (old.status !== "NEW") {
+        throw new BadRequestException("Orders can only be cancelled or voided while in New Orders");
       }
       const order = await tx.order.update({
         where: { id }, data: { status: "CANCELLED" },
