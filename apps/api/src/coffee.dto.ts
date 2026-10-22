@@ -84,7 +84,6 @@ export class ItemDto {
 
 export class OrderDto {
   @IsString()
-  @MinLength(1)
   @MaxLength(100)
   customer!: string;
 

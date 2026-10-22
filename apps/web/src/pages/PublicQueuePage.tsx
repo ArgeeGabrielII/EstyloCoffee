@@ -5,6 +5,7 @@ type QueueStatus = "NEW" | "PREPARING" | "READY";
 type PublicOrder = {
   id: string;
   customer: string;
+  queueNumber: number | null;
   status: QueueStatus;
 };
 
@@ -84,7 +85,7 @@ export function PublicQueuePage() {
               <thead>
                 <tr style={{ background: "#262626" }}>
                   <th style={{ padding: 16, width: "60%" }}>
-                    Name
+                    Queue # / Name
                   </th>
                   <th style={{ padding: 16 }}>Status</th>
                 </tr>
@@ -102,7 +103,14 @@ export function PublicQueuePage() {
                         overflowWrap: "anywhere",
                       }}
                     >
-                      {order.customer}
+                      <strong>
+                        {order.queueNumber == null
+                          ? "—"
+                          : `#${String(order.queueNumber).padStart(3, "0")}`}
+                      </strong>
+                      {order.customer !== "Walk-in Customer" && (
+                        <small className="d-block">{order.customer}</small>
+                      )}
                     </td>
                     <td style={{ padding: 16 }}>
                       <span

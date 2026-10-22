@@ -195,7 +195,15 @@ export function OrdersPage() {
                           {new Date(order.createdAt).toLocaleString()}
                         </small>
 
-                        <h3 className="mt-2">{order.customer}</h3>
+                        <h3 className="mt-2">
+                          {order.queueNumber != null && (
+                            <span className="text-warning">
+                              Queue #{String(order.queueNumber).padStart(3, "0")}
+                              <br />
+                            </span>
+                          )}
+                          {order.customer}
+                        </h3>
 
                         <span
                           className={

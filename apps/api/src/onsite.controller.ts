@@ -370,6 +370,7 @@ export class OnsiteController {
 
     return {
       id: order.id,
+      queueNumber: order.queueNumber,
 
       customer: order.customer,
 

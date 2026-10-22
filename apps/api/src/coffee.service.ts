@@ -19,7 +19,8 @@ export class CoffeeService {
     }
 
     if (
-      !dto.customer.trim() ||
+      ((dto.source === "SMS" || dto.fulfillment === "DELIVERY") &&
+        !dto.customer.trim()) ||
       (dto.fulfillment === "DELIVERY" &&
         (!dto.address.trim() || !dto.phone.trim())) ||
       (dto.source === "SMS" && !dto.phone.trim())
@@ -100,10 +101,26 @@ export class CoffeeService {
         );
       }
 
+      // Allocate one queue number per order, not per cup.
+      // PostgreSQL upsert serializes concurrent increments for each day.
+      // Using Philippine local date means the counter resets at midnight PHT.
+      const counters = await tx.$queryRaw<
+        Array<{ day: Date; number: number }>
+      >`
+        INSERT INTO "DailyQueueCounter" ("day", "lastNumber")
+        VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date, 1)
+        ON CONFLICT ("day") DO UPDATE
+          SET "lastNumber" = "DailyQueueCounter"."lastNumber" + 1
+        RETURNING "day", "lastNumber" AS "number"
+      `;
+      const queue = counters[0];
+
       const order = await tx.order.create({
         data: {
           requestKey: key,
-          customer: dto.customer.trim(),
+          customer: dto.customer.trim() || "Walk-in Customer",
+          queueDate: queue.day,
+          queueNumber: queue.number,
           phone: dto.phone,
           address: dto.address,
           fulfillment: dto.fulfillment,

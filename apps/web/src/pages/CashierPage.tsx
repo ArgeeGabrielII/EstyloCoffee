@@ -32,6 +32,7 @@ export function CashierPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [successQueue, setSuccessQueue] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [addonModalLineId, setAddonModalLineId] = useState<string | null>(null);
@@ -215,7 +216,7 @@ export function CashierPage() {
     requestKey.current ||= key();
 
     try {
-      const result = await api<{ id: string }>("/orders", {
+      const result = await api<{ id: string; queueNumber: number | null }>("/orders", {
         method: "POST",
         headers: {
           "Idempotency-Key": requestKey.current,
@@ -240,6 +241,7 @@ export function CashierPage() {
       });
 
       setSuccess(result.id);
+      setSuccessQueue(result.queueNumber);
       setCart([]);
       setCustomer("");
       setPhone("");
@@ -317,6 +319,9 @@ export function CashierPage() {
           role="status"
           className="alert alert-success m-3"
         >
+          {successQueue != null && (
+            <strong>Queue #{String(successQueue).padStart(3, "0")} — </strong>
+          )}
           Order {success.slice(0, 8)} created.{" "}
           <Link to="/orders">
             Open order board
@@ -516,14 +521,15 @@ export function CashierPage() {
               className="form-label mt-3"
               htmlFor="customer"
             >
-              Customer
+              Customer Name (optional for walk-in pickup)
             </label>
 
             <input
               id="customer"
               className="form-control"
-              required
+              required={source === "SMS" || fulfillment === "DELIVERY"}
               maxLength={100}
+              placeholder="Leave blank to use queue number"
               value={customer}
               onChange={(e) =>
                 setCustomer(e.target.value)

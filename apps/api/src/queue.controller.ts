@@ -18,6 +18,7 @@ export class QueueController {
       select: {
         id: true,
         customer: true,
+        queueNumber: true,
         status: true,
       },
       orderBy: [

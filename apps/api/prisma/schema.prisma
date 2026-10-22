@@ -60,6 +60,8 @@ model Order {
   id            String        @id @default(uuid())
   requestKey    String        @unique
   customer      String
+  queueNumber   Int?
+  queueDate     DateTime?     @db.Date
   phone         String        @default("")
   address       String        @default("")
   fulfillment   Fulfillment
@@ -72,6 +74,7 @@ model Order {
   user          User          @relation(fields: [createdBy], references: [id])
   items         OrderItem[]
 
+  @@unique([queueDate, queueNumber])
   @@index([createdAt])
   @@index([status])
 }

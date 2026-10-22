@@ -21,6 +21,7 @@ export type Status =
 
 export type Order = {
   id: string;
+  queueNumber: number | null;
   customer: string;
   phone: string;
   address: string;
