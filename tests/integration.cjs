@@ -125,11 +125,15 @@ async function request(path, method = "GET", data, extra = {}) {
     (await request("/orders/" + id, "PATCH", { status: "READY" })).status,
     200,
   );
+  const paymentMethods = (await request("/payment-methods")).body;
+  const cashMethod = paymentMethods.find((method) => method.name === "Cash" && method.active);
+  assert(cashMethod, "Seeded active Cash payment method should exist");
   assert.equal(
     (
       await request("/orders/" + id, "PATCH", {
         status: "COMPLETED",
         payment: "PAID",
+        paymentMethodId: cashMethod.id,
       })
     ).status,
     200,
