@@ -11,6 +11,9 @@ const dto = {
 function setup(price: number | null = 12500) {
   const tx = {
     $executeRaw: jest.fn(),
+    $queryRaw: jest.fn().mockResolvedValue([
+      { day: new Date("2026-10-22T00:00:00.000Z"), number: 1 },
+    ]),
     product: {
       findUnique: jest
         .fn()
@@ -42,6 +45,8 @@ describe("Coffee order orchestration", () => {
     ).toBe(12500);
     expect(tx.auditLog.create).toHaveBeenCalled();
     expect(tx.$executeRaw).toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.order.create.mock.calls[0][0].data.queueNumber).toBe(1);
   });
   it("returns prior order without adding duplicate lines", async () => {
     const { service, tx } = setup();
