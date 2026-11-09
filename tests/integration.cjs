@@ -147,7 +147,11 @@ async function request(path, method = "GET", data, extra = {}) {
   cookie = cashierCookie;
   assert.equal((await request("/orders")).status, 401);
   cookie = adminCookie;
-  assert((await request("/audit")).body.length > 0);
+  const audit = await request("/audit");
+  assert.equal(audit.status, 200);
+  assert(Array.isArray(audit.body.rows), "Audit endpoint returns a paginated rows array");
+  assert(audit.body.rows.length > 0);
+  assert(audit.body.total > 0);
   console.log("PostgreSQL integration smoke checks passed.");
 })()
   .catch((e) => {
