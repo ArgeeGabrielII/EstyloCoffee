@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, money } from "../api/client";
-import { Order, Status } from "../types";
+import { Order, Status, StoreHoursState } from "../types";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 
 type PaymentMethod = { id: string; name: string; active: boolean };
@@ -58,10 +58,11 @@ export function OrdersPage() {
     return () => window.clearInterval(timer);
   }, []);
   const { data: orders, error, loading, updatedAt } = useAutoRefresh<Order[]>("/queue/staff", [], revision);
-  const todayKey = dateKey(now);
-  const todayOrders = orders.filter(order => dateKey(new Date(order.createdAt)) === todayKey);
+  const { data: storeHours, error: hoursError } = useAutoRefresh<StoreHoursState | null>("/store-hours/current", null, 0, 15_000);
+  const todayKey = storeHours?.businessDate ?? dateKey(now);
+  const todayOrders = orders.filter(order => order.businessDate.slice(0, 10) === todayKey);
   const previousPending = orders.filter(order =>
-    dateKey(new Date(order.createdAt)) < todayKey && pendingStatuses.includes(order.status));
+    order.businessDate.slice(0, 10) !== todayKey && pendingStatuses.includes(order.status));
   const detailOrder = detailId ? orders.find(o => o.id === detailId) ?? null : null;
 
   useEffect(() => {
@@ -204,12 +205,13 @@ export function OrdersPage() {
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
           <h1 className="h4 fw-bold mb-1">Cashier &amp; Barista Orders</h1>
-          <div className="small text-secondary">{new Intl.DateTimeFormat("en-PH", {
-            timeZone: "Asia/Manila", dateStyle: "full",
-          }).format(now)} · Philippine time</div>
+          <div className="small text-secondary">Business date: {todayKey} · Philippine time</div>
+          {storeHours && <div className="small text-secondary">
+            Automatic rollover: {new Date(storeHours.rolloverAt).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "short", timeStyle: "short" })}
+          </div>}
         </div>
         <div className="d-flex flex-column align-items-start align-items-sm-end gap-1">
-          <span className="badge text-bg-secondary fs-6">{todayOrders.length} orders today</span>
+          <span className="badge text-bg-secondary fs-6">{todayOrders.length} orders this business day</span>
           <span className="small text-secondary" aria-live="off">
             <i className="bi bi-arrow-clockwise me-1" aria-hidden="true" />
             {loading ? "Loading orders…" : updatedAt
@@ -219,12 +221,13 @@ export function OrdersPage() {
         </div>
       </div>
     </header>
-    {(error || actionError) && <div role="alert" className="alert alert-danger">{actionError || error}</div>}
+    {(error || actionError || hoursError) && <div role="alert" className="alert alert-danger">{actionError || error || hoursError}</div>}
+    {storeHours?.phase === "REVIEW" && <div className="alert alert-warning" role="status">End-of-day review buffer is active. Today’s orders remain visible until the scheduled rollover.</div>}
     {previousPending.length > 0 && <div className="alert alert-warning mb-3" role="alert" aria-live="polite">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <strong><i className="bi bi-exclamation-triangle-fill me-2" aria-hidden="true" />
-            Attention: {previousPending.length} previous-day order{previousPending.length === 1 ? " is" : "s are"} not yet completed/cancelled</strong>
+            Attention: {previousPending.length} previous-business-day order{previousPending.length === 1 ? " is" : "s are"} not yet completed/cancelled</strong>
           <div className="small mt-1">Older New, Preparing, or Ready for Pickup orders need attention.</div>
         </div>
         <button type="button" className="btn btn-outline-dark fw-semibold" style={{ minHeight: 44 }}
@@ -280,7 +283,7 @@ export function OrdersPage() {
       </section>;
     })}
 
-    <section id="previous-pending-orders" className="card-estylo mb-4" aria-label="Pending from Previous Days"
+    <section id="previous-pending-orders" className="card-estylo mb-4" aria-label="Pending from Previous Business Days"
       style={{ border: previousPending.length ? "2px solid #b88a35" : undefined, scrollMarginTop: 24 }}>
       <button type="button" className="btn w-100 text-start d-flex align-items-center justify-content-between gap-2"
         style={{ color: "inherit", minHeight: 56, padding: "8px 0" }}
@@ -288,7 +291,7 @@ export function OrdersPage() {
         onClick={() => setOlderOpen(value => !value)}>
         <span><strong className="fs-5">Pending from Previous Days</strong>
           <span className="badge text-bg-warning ms-2">{previousPending.length}</span>
-          <small className="d-block text-secondary mt-1">Unfinished orders from before today · Philippine time</small>
+          <small className="d-block text-secondary mt-1">Unfinished orders from earlier business dates · Philippine time</small>
         </span>
         <i className={`bi ${olderOpen ? "bi-chevron-up" : "bi-chevron-down"}`} aria-hidden="true" />
       </button>

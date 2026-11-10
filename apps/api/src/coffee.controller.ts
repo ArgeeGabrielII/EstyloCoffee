@@ -28,6 +28,7 @@ import {
   UserDto,
 } from "./coffee.dto";
 import { CoffeeService } from "./coffee.service";
+import { StoreHoursService, businessDateValue } from "./store-hours.service";
 
 const selectUser = {
   id: true,
@@ -43,6 +44,7 @@ export class CoffeeController {
   constructor(
     private p: PrismaService,
     private coffee: CoffeeService,
+    private hours: StoreHoursService,
   ) {}
 
   @Get("products")
@@ -313,6 +315,7 @@ export class CoffeeController {
   async reports(
     @Query("from") from?: string,
     @Query("to") to?: string,
+    @Query("businessDay") businessDay?: string,
   ) {
     const end = to ? new Date(to) : new Date();
     const start = from
@@ -330,9 +333,11 @@ export class CoffeeController {
       );
     }
 
-    const where = {
-      createdAt: { gte: start, lte: end },
-    };
+    if (businessDay && businessDay !== "current")
+      throw new BadRequestException("Invalid business day");
+    const where = businessDay === "current"
+      ? { businessDate: businessDateValue((await this.hours.current()).businessDate) }
+      : { createdAt: { gte: start, lte: end } };
 
     const [count, paid, open, statuses] =
       await this.p.$transaction([

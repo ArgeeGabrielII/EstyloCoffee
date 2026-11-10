@@ -17,6 +17,7 @@ export type Status = "NEW" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED";
 export type Order = {
   id: string;
   queueNumber: number | null;
+  businessDate: string;
   customer: string;
   phone: string;
   address: string;
@@ -49,4 +50,17 @@ export type Report = {
   paidCentavos: number;
   open: number;
   statuses: { status: Status; _count: number }[];
+};
+
+export type StoreHoursState = {
+  openingTime: string;
+  closingTime: string;
+  bufferMinutes: number;
+  businessDate: string;
+  startedAt: string;
+  closingAt: string;
+  rolloverAt: string;
+  phase: "OPEN" | "CLOSED" | "REVIEW";
+  isOpen: boolean;
+  timeZone: "Asia/Manila";
 };

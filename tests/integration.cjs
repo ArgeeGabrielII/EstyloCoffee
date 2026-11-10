@@ -55,6 +55,28 @@ async function request(path, method = "GET", data, extra = {}) {
     201,
   );
   const adminCookie = cookie;
+  const defaultHours = await request("/store-hours/current");
+  assert.equal(defaultHours.status, 200);
+  assert.equal(defaultHours.body.bufferMinutes, 60);
+  assert.equal(defaultHours.body.timeZone, "Asia/Manila");
+  assert.equal(
+    (await request("/store-hours", "PUT", {
+      openingTime: "08:00", closingTime: "07:00", bufferMinutes: 120,
+    })).status,
+    400,
+  );
+  // A 24-hour test schedule avoids time-of-day-dependent CI behavior.
+  const savedHours = await request("/store-hours", "PUT", {
+    openingTime: "00:00", closingTime: "00:00", bufferMinutes: 0,
+  });
+  assert.equal(savedHours.status, 200);
+  assert.equal(savedHours.body.closingTime, "00:00");
+  const reconciliation = await request("/store-hours/reconciliation");
+  assert.equal(reconciliation.status, 200);
+  assert.equal(reconciliation.body.locked, false);
+  assert.equal((await request("/store-hours/finalize", "POST", {
+    businessDate: reconciliation.body.businessDate, confirmation: "FINALIZE",
+  })).status, 409);
   const products = (await request("/products")).body;
   assert.equal(products.length, 11);
   const product = products[0];
@@ -85,6 +107,13 @@ async function request(path, method = "GET", data, extra = {}) {
     201,
   );
   const cashierCookie = cookie;
+  assert.equal((await request("/store-hours", "PUT", {
+    openingTime: "08:00", closingTime: "20:00", bufferMinutes: 60,
+  })).status, 403);
+  assert.equal((await request("/store-hours/reconciliation")).status, 403);
+  assert.equal((await request("/store-hours/finalize", "POST", {
+    businessDate: "2026-11-10", confirmation: "FINALIZE",
+  })).status, 403);
   assert.equal((await request("/users")).status, 403);
   assert.equal(
     (
@@ -113,6 +142,11 @@ async function request(path, method = "GET", data, extra = {}) {
   assert.equal(one.body.id, two.body.id);
   assert.equal(one.body.totalCentavos, 25000);
   const id = one.body.id;
+  const publicBoard = await request("/queue/public");
+  assert.equal(publicBoard.status, 200);
+  const boardOrder = publicBoard.body.find((row) => row.id === id);
+  assert(boardOrder, "New order should appear in public queue");
+  assert.match(boardOrder.businessDate, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(
     (await request("/orders/" + id, "PATCH", { status: "COMPLETED" })).status,
     409,
@@ -152,6 +186,30 @@ async function request(path, method = "GET", data, extra = {}) {
   assert(Array.isArray(audit.body.rows), "Audit endpoint returns a paginated rows array");
   assert(audit.body.rows.length > 0);
   assert(audit.body.total > 0);
+  // Apply an always-closed interval relative to the actual Manila clock,
+  // then prove backend rejection (UI disabling is only a convenience).
+  const phNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const nowMinute = phNow.getUTCHours() * 60 + phNow.getUTCMinutes();
+  const clock = (n) => {
+    const minute = ((n % 1440) + 1440) % 1440;
+    return String(Math.floor(minute / 60)).padStart(2, "0") + ":" +
+      String(minute % 60).padStart(2, "0");
+  };
+  const closedHours = await request("/store-hours", "PUT", {
+    openingTime: clock(nowMinute + 120),
+    closingTime: clock(nowMinute + 180),
+    bufferMinutes: 0,
+  });
+  assert.equal(closedHours.status, 200);
+  assert.equal((await request("/onsite/hours")).body.isOpen, false);
+  const deniedOrder = await request("/orders", "POST", payload, {
+    "Idempotency-Key": "closed-order-" + Date.now(),
+  });
+  assert.equal(deniedOrder.status, 409);
+  assert.equal((await request("/orders", "POST", payload, {
+    "Idempotency-Key": key,
+  })).status, 201, "Retry of an already created order stays idempotent");
+
   console.log("PostgreSQL integration smoke checks passed.");
 })()
   .catch((e) => {

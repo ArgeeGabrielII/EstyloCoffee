@@ -27,6 +27,7 @@ A browser-based coffee shop management and ordering system built with **React 19
 | /orders | Order board, payment and fulfillment | ADMIN, CASHIER |
 | /dashboard | Daily KPIs | ADMIN |
 | /reports | Daily/monthly sales and drink analytics | ADMIN |
+| /maintenance/store-hours | Opening/closing times, end-of-day buffer and rollover status | ADMIN |
 | /maintenance/products | Drinks and add-ons | ADMIN |
 | /maintenance/payment-methods | Payment method configuration | ADMIN |
 | /maintenance/users | Staff and guest accounts | ADMIN |
@@ -71,6 +72,18 @@ An SMS order is manually entered by staff; no SMS inbox/sending service is inclu
 
 Onsite ordering requires an **active GUEST system account** whose ID is set as ONSITE_ACTOR_USER_ID in the backend configuration. A GUEST is not a normal login account.
 
+### Store Hours maintenance and business-day rollover (new feature)
+
+The admin-only **Maintenance → Store Hours** screen sets a recurring daily **Opening Time**, **Closing Time**, and a **Review Buffer** of 0–360 minutes (default: **60**). All times use Asia/Manila; overnight opening/closing is supported. Settings are validated so a shift plus review buffer does not overlap the next opening.
+
+At closing time the **REVIEW** phase begins: **cashier and public onsite new-order creation stops**, while the current Dashboard and Orders board remain on the closing business day for reconciliation. The UI displays a closed-state notice, and the API rejects out-of-hours orders with HTTP 409. Existing orders may still be prepared or completed according to their status, but new sales are blocked. At **Closing + Buffer**, they automatically roll over to the next business day. Payment confirmations and voids for the prior business date become **automatically read-only**, even if no administrator clicked Finalize. The report selector follows the active business date unless an admin is browsing history. A date-specific report can still be opened for any previous period, and older unfinished orders remain available on the order board.
+
+**Financial finalization:** During the REVIEW window, Maintenance → Store Hours shows order count, paid orders/sales, unpaid orders, and unfinished orders. An ADMIN may type **FINALIZE** to create a stored, audit-linked closing snapshot only when there are **no unpaid and no unfinished orders**. A manually finalized date is immediately financially locked. Financial writes to previous dates are rejected after automatic rollover even if no snapshot was created; incomplete orders stay visible but cannot be newly marked paid against the closed date. Reconciliation exceptions require a separate admin-supervised, audited adjustment process; there is no automatic refund or reopening of historical records. Do not leave orders unpaid past cutoff.
+
+Each newly created order has a stored **businessDate**. Queue numbering uses that same date and starts at 1 after rollover; **no orders, sales, or audit records are deleted**. The additive migration `20261110080000_store_hours_business_day` backfills older orders to the original Philippine calendar date so historical records are not lost or reclassified when settings change. Subsequent settings edits affect **new** orders and live display boundaries, not the stored historical business dates. Store hours show an Open/Closed state but do **not** automatically prevent cashier or onsite orders outside those hours.
+
+**Deployment warning:** This feature adds two additive Prisma migrations (the seventh for Store Hours and business dates, and the eighth for auditable business-day close snapshots). It is **not installed on the production Windows machine** merely by merging this PR. The locally installed release updater is pinned to the previously deployed commit `b0ca1dd` and the prior three migration files. A fresh verified backup, reviewed migration SQL, a newly approved deployment script and successful smoke tests are mandatory before updating production.
+
 ### Admin maintenance and reports
 
 - **Drinks & Add-ons:** two tabs, Add New Drink/Add New Add-On, active/inactive records, edit name/price/availability, **Save**. Historic orders retain stored price snapshots.
@@ -94,7 +107,7 @@ A customer cannot directly pay through the onsite page. Orders enter the workflo
 ## Codebase layout
 
     apps/api/                     NestJS controllers and services
-    apps/api/prisma/              Prisma schema, seed and six migrations
+    apps/api/prisma/              Prisma schema, seed and versioned migrations
     apps/web/src/                 React UI, routing, cashier and admin screens
     apps/web/public/              Logo and static assets
     .github/workflows/ci.yml      Build, lint, tests, disposable DB integration

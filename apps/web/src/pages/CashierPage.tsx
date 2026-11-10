@@ -4,7 +4,8 @@ import "./CashierHeader.css";
 import "./CashierCupBadges.css";
 import { api, money } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { Product, Addon } from "../types";
+import { Product, Addon, StoreHoursState } from "../types";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 
 type CartLine = {
   id: string;
@@ -46,6 +47,8 @@ export function CashierPage() {
   const [addonDraft, setAddonDraft] = useState<Record<string, number>>({});
   const requestKey = useRef("");
 
+  const { data: hours, error: hoursError } = useAutoRefresh<StoreHoursState | null>("/store-hours/current", null, 0, 15_000);
+  const acceptingOrders = hours?.isOpen === true;
   const activeAddons = addons.filter((addon) => addon.active);
   const editingLine = cart.find((line) => line.id === addonModalLineId);
   const editingProduct = products.find((product) => product.id === editingLine?.productId);
@@ -143,6 +146,7 @@ export function CashierPage() {
   function reviewOrder(e: FormEvent) {
     e.preventDefault();
     if (busy || submitting.current) return;
+    if (!acceptingOrders) { setError("Store is closed. New orders are only accepted during opening hours."); return; }
     if (!cart.length) {
       setError("Select at least one drink.");
       return;
@@ -238,7 +242,8 @@ export function CashierPage() {
         </div>
       </header>
 
-      {error && <div role="alert" className="alert alert-danger m-3">{error}</div>}
+      {(error || hoursError) && <div role="alert" className="alert alert-danger m-3">{error || hoursError}</div>}
+      {!acceptingOrders && <div className="alert alert-warning m-3" role="status">Store is currently closed for new orders. {hours ? `Operating hours: ${hours.openingTime}–${hours.closingTime} (PH)` : "Checking store hours…"}</div>}
       {success && (
         <div role="status" className="alert alert-success m-3">
           {successQueue != null && <strong>Queue #{String(successQueue).padStart(3, "0")} — </strong>}
@@ -349,7 +354,7 @@ export function CashierPage() {
               <textarea id="address" className="form-control" required maxLength={300}
                 value={address} onChange={(e) => setAddress(e.target.value)} />
             </>}
-            <button type="submit" className="btn btn-estylo complete-btn w-100" disabled={busy || !cart.length}>
+            <button type="submit" className="btn btn-estylo complete-btn w-100" disabled={busy || !cart.length || !acceptingOrders}>
               CREATE ORDER
             </button>
             <button type="button" className="btn btn-outline-light clear-btn w-100" disabled={busy}

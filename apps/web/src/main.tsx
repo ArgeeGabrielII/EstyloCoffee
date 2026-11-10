@@ -18,6 +18,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { PaymentMethodsPage } from "./pages/PaymentMethodsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { StoreHoursPage } from "./pages/StoreHoursPage";
 function Home() {
   const { user } = useAuth();
   return <Navigate to={user ? user.role === "ADMIN" ? "/dashboard" : "/cashier" : "/login"} replace />;
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <Route path="/dashboard" element={<Admin><DashboardPage /></Admin>} />
       <Route path="/orders" element={<OrdersPage />} />
       <Route path="/reports" element={<Admin><ReportsPage /></Admin>} />
+      <Route path="/maintenance/store-hours" element={<Admin><StoreHoursPage /></Admin>} />
       <Route path="/maintenance/products" element={<Admin><ProductsPage /></Admin>} />
       <Route path="/maintenance/payment-methods" element={<Admin><PaymentMethodsPage /></Admin>} />
       <Route path="/maintenance/users" element={<Admin><UsersPage /></Admin>} />

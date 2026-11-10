@@ -46,6 +46,7 @@ model User {
   createdAt    DateTime   @default(now())
   orders       Order[]
   auditLogs    AuditLog[]
+  finalizedDays BusinessDayClose[]
 }
 
 model Product {
@@ -62,6 +63,7 @@ model Order {
   customer      String
   queueNumber   Int?
   queueDate     DateTime?     @db.Date
+  businessDate  DateTime      @db.Date
   phone         String        @default("")
   address       String        @default("")
   fulfillment   Fulfillment
@@ -80,6 +82,7 @@ model Order {
 
   @@unique([queueDate, queueNumber])
   @@index([createdAt])
+  @@index([businessDate])
   @@index([status])
 }
 
@@ -132,4 +135,25 @@ model PaymentMethod {
   active Boolean @default(true)
   createdAt DateTime @default(now())
   orders Order[]
+}
+
+model StoreHours {
+  id            Int      @id @default(1)
+  openingTime   String   @default("00:00")
+  closingTime   String   @default("23:00")
+  bufferMinutes Int      @default(60)
+  updatedAt     DateTime @updatedAt
+}
+
+model BusinessDayClose {
+  businessDate     DateTime @id @db.Date
+  finalizedAt      DateTime @default(now())
+  finalizedBy      String
+  user             User     @relation(fields: [finalizedBy], references: [id])
+  orderCount       Int
+  paidOrderCount   Int
+  salesCentavos    Int
+  unpaidOrderCount Int
+  unfinishedCount  Int
+  // Manually finalized financial snapshot; automatic lock happens at rollover.
 }

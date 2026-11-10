@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "./prisma/prisma.service";
 import { OrderDto, UpdateOrderDto } from "./coffee.dto";
 import { transition } from "./order-rules";
+import { businessDateValue, businessDayWindow, DEFAULT_HOURS } from "./store-hours.service";
+import { assertFinancialDayOpen } from "./business-day-lock";
 
 @Injectable()
 export class CoffeeService {
@@ -73,9 +76,19 @@ export class CoffeeService {
       if (totalCentavos > 2000000000) {
         throw new BadRequestException("Order exceeds maximum supported total");
       }
+      // Freeze the operational business date on the order. Future schedule edits
+      // must not rewrite historical order/report periods.
+      const settings = (await tx.storeHours.findUnique({ where: { id: 1 } })) ?? DEFAULT_HOURS;
+      const window = businessDayWindow(new Date(), settings);
+      if (!window.isOpen) {
+        throw new ConflictException("Store is closed. New orders are accepted only during opening hours.");
+      }
+      const businessDate = window.businessDate;
+      // Lock the date before queue allocation so finalization cannot race an order.
+      await assertFinancialDayOpen(tx, businessDate);
       const counters = await tx.$queryRaw<Array<{ day: Date; number: number }>>`
         INSERT INTO "DailyQueueCounter" ("day", "lastNumber")
-        VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date, 1)
+        VALUES (CAST(${businessDate} AS DATE), 1)
         ON CONFLICT ("day") DO UPDATE
           SET "lastNumber" = "DailyQueueCounter"."lastNumber" + 1
         RETURNING "day", "lastNumber" AS "number"
@@ -86,6 +99,7 @@ export class CoffeeService {
           requestKey: key,
           customer: dto.customer.trim() || "Walk-in Customer",
           queueDate: queue.day,
+          businessDate: businessDateValue(businessDate),
           queueNumber: queue.number,
           phone: dto.phone,
           address: dto.address,
@@ -114,6 +128,7 @@ export class CoffeeService {
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
       if (!old) throw new NotFoundException();
+      await assertFinancialDayOpen(tx, old.businessDate.toISOString().slice(0, 10));
       if (old.status !== "NEW") {
         throw new BadRequestException("Orders can only be cancelled or voided while in New Orders");
       }
@@ -135,6 +150,11 @@ export class CoffeeService {
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id=${id} FOR UPDATE`;
       const old = await tx.order.findUnique({ where: { id } });
       if (!old) throw new NotFoundException();
+      // Preparation/ready status can continue on carry-over orders, but payment,
+      // voids and other financial effects cannot modify a closed business day.
+      if (dto.payment !== undefined || dto.status === "CANCELLED") {
+        await assertFinancialDayOpen(tx, old.businessDate.toISOString().slice(0, 10));
+      }
       if (dto.paymentMethodId && dto.payment !== "PAID")
         throw new BadRequestException("Payment method can only be set when marking paid");
       const next = transition(old, dto);

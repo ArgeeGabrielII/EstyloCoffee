@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, money } from "../api/client";
-import type { Product, Addon } from "../types";
+import type { Product, Addon, StoreHoursState } from "../types";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { generateUUID } from "../utils/uuid";
 import "./OnsiteOrderModal.css";
 
@@ -25,6 +26,8 @@ export function OnsiteOrderPage() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [addonModalLineId, setAddonModalLineId] = useState<string | null>(null);
   const [addonDraft, setAddonDraft] = useState<Record<string, number>>({});
+  const { data: hours, error: hoursError } = useAutoRefresh<StoreHoursState | null>("/onsite/hours", null, 0, 15_000);
+  const acceptingOrders = hours?.isOpen === true;
   const requestKey = useRef("");
   const submitting = useRef(false);
 
@@ -54,7 +57,7 @@ export function OnsiteOrderPage() {
   }, {});
 
   function addCup(productId: string) {
-    if (busy || receipt) return;
+    if (busy || receipt || !acceptingOrders) return;
     if (cart.length >= 50) { setError("Maximum of 50 cups per order."); return; }
     changed();
     setCart(prev => [...prev, { id: generateUUID(), productId, addons: {} }]);
@@ -82,14 +85,14 @@ export function OnsiteOrderPage() {
   }
   function reviewOrder(event: FormEvent) {
     event.preventDefault();
-    if (busy || submitting.current || receipt) return;
+    if (busy || submitting.current || receipt || !acceptingOrders) return;
     if (!customer.trim()) { setError("Please enter your name."); return; }
     if (!cart.length) { setError("Please select at least one coffee."); return; }
     setError("");
     setReviewOpen(true);
   }
   async function confirmOrder() {
-    if (busy || submitting.current || !reviewOpen || !cart.length || !customer.trim()) return;
+    if (busy || submitting.current || !reviewOpen || !cart.length || !customer.trim() || !acceptingOrders) return;
     submitting.current = true;
     setBusy(true);
     setError("");
@@ -135,7 +138,8 @@ export function OnsiteOrderPage() {
         <p>Onsite Ordering</p>
       </header>
       <main className="onsite-main">
-        {error && <div className="alert alert-danger" role="alert">{error}</div>}
+        {(error || hoursError) && <div className="alert alert-danger" role="alert">{error || hoursError}</div>}
+        {!acceptingOrders && !receipt && <div className="alert alert-warning" role="status">Store is closed for new orders. {hours ? `Opening hours: ${hours.openingTime}–${hours.closingTime} (Philippine Time)` : "Checking operating hours…"}</div>}
         {receipt ? (
           <section className="onsite-receipt">
             <h2>Order Received!</h2>
@@ -170,7 +174,7 @@ export function OnsiteOrderPage() {
                   const count = counts[product.id] || 0;
                   return <button type="button" key={product.id}
                     className={`onsite-tile${count ? " onsite-tile-selected" : ""}`}
-                    disabled={busy || !product.priceCentavos}
+                    disabled={busy || !acceptingOrders || !product.priceCentavos}
                     aria-label={`Add one ${product.name}; ${count} already selected`}
                     onClick={() => addCup(product.id)}>
                     {count > 0 && <span className="onsite-count-badge" aria-label={`${count} selected`}>{count}</span>}
@@ -208,7 +212,7 @@ export function OnsiteOrderPage() {
                 placeholder="Enter your name" disabled={busy} value={customer}
                 onChange={e => { changed(); setCustomer(e.target.value); }} />
               <p className="onsite-muted mt-3">No phone number or account required. Payment will be handled at the cashier.</p>
-              <button type="submit" className="btn btn-warning btn-lg w-100 mt-2" disabled={busy || loading || !cart.length}>
+              <button type="submit" className="btn btn-warning btn-lg w-100 mt-2" disabled={busy || loading || !cart.length || !acceptingOrders}>
                 Review Order — {money(total)}
               </button>
               {cart.length > 0 && <button type="button" className="btn btn-outline-light w-100 mt-2" disabled={busy}
@@ -260,7 +264,7 @@ export function OnsiteOrderPage() {
           </div>
           <footer className="onsite-modal-footer"><div className="onsite-modal-actions">
             <button type="button" className="btn btn-outline-light" disabled={busy} onClick={() => { setReviewOpen(false); setError(""); }}>Back to Edit</button>
-            <button type="button" className="btn btn-warning" disabled={busy} onClick={confirmOrder}>{busy ? "Placing Order…" : "Confirm Order"}</button>
+            <button type="button" className="btn btn-warning" disabled={busy || !acceptingOrders} onClick={confirmOrder}>{busy ? "Placing Order…" : "Confirm Order"}</button>
           </div></footer>
         </section>
       </div>}
