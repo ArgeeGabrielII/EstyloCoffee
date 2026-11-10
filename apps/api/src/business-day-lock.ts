@@ -1,5 +1,5 @@
 import { ConflictException } from "@nestjs/common";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { businessDateValue, businessDayFor, DEFAULT_HOURS } from "./store-hours.service";
 
 type Database = Prisma.TransactionClient;
