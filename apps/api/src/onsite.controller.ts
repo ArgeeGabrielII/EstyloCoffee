@@ -34,6 +34,7 @@ import type { Request } from "express";
 import { PrismaService } from "./prisma/prisma.service";
 import { CoffeeService } from "./coffee.service";
 import { OrderDto } from "./coffee.dto";
+import { StoreHoursService } from "./store-hours.service";
 
 // =====================================================
 // DTO: Guest Order Add-ons
@@ -114,7 +115,8 @@ export class OnsiteController {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly coffee: CoffeeService
+    private readonly coffee: CoffeeService,
+    private readonly hours: StoreHoursService,
   ) {}
 
   // ===================================================
@@ -125,6 +127,9 @@ export class OnsiteController {
   //
   // Returns active coffee products and add-ons.
   // ===================================================
+
+  @Get("hours")
+  publicHours() { return this.hours.current(); }
 
   @Get("menu")
   async menu() {
