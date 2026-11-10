@@ -15,6 +15,7 @@ const publicPages = [
 ] as const;
 
 const maintenance = [
+  ["/maintenance/store-hours", "Store Hours", "bi-clock"],
   ["/maintenance/products", "Drinks & Add-ons", "bi-cup-hot"],
   ["/maintenance/payment-methods", "Payment Methods", "bi-credit-card"],
   ["/maintenance/users", "Users", "bi-people-fill"],
