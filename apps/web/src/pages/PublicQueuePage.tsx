@@ -6,6 +6,7 @@ type PublicOrder = {
   id: string;
   customer: string;
   queueNumber: number | null;
+  businessDate: string;
   status: QueueStatus;
 };
 
@@ -107,6 +108,9 @@ export function PublicQueuePage() {
                         {order.queueNumber == null
                           ? "—"
                           : `#${String(order.queueNumber).padStart(3, "0")}`}
+                        <small className="d-block" style={{ fontWeight: "normal", fontSize: ".55em", color: "#d7bd76" }}>
+                          Business date: {order.businessDate.slice(0, 10)}
+                        </small>
                       </strong>
                       {order.customer !== "Walk-in Customer" && (
                         <small className="d-block">{order.customer}</small>
