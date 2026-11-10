@@ -55,6 +55,21 @@ async function request(path, method = "GET", data, extra = {}) {
     201,
   );
   const adminCookie = cookie;
+  const defaultHours = await request("/store-hours/current");
+  assert.equal(defaultHours.status, 200);
+  assert.equal(defaultHours.body.bufferMinutes, 60);
+  assert.equal(defaultHours.body.timeZone, "Asia/Manila");
+  assert.equal(
+    (await request("/store-hours", "PUT", {
+      openingTime: "08:00", closingTime: "07:00", bufferMinutes: 120,
+    })).status,
+    400,
+  );
+  const savedHours = await request("/store-hours", "PUT", {
+    openingTime: "08:00", closingTime: "18:00", bufferMinutes: 60,
+  });
+  assert.equal(savedHours.status, 200);
+  assert.equal(savedHours.body.closingTime, "18:00");
   const products = (await request("/products")).body;
   assert.equal(products.length, 11);
   const product = products[0];
@@ -85,6 +100,9 @@ async function request(path, method = "GET", data, extra = {}) {
     201,
   );
   const cashierCookie = cookie;
+  assert.equal((await request("/store-hours", "PUT", {
+    openingTime: "08:00", closingTime: "20:00", bufferMinutes: 60,
+  })).status, 403);
   assert.equal((await request("/users")).status, 403);
   assert.equal(
     (
