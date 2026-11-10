@@ -67,16 +67,15 @@ export class CupsReportController {
 
     // Philippine Time (UTC+8).
     // Start inclusive, end exclusive.
-    const offsetMs = 8 * 60 * 60 * 1000;
     const startMonth = month ?? 1;
     const endMonth = month ?? 12;
 
     const start = new Date(
-      Date.UTC(year, startMonth - 1, 1) - offsetMs
+      Date.UTC(year, startMonth - 1, 1)
     );
 
     const end = new Date(
-      Date.UTC(year, endMonth, 1) - offsetMs
+      Date.UTC(year, endMonth, 1)
     );
 
     const [products, orders] = await Promise.all([
@@ -96,13 +95,13 @@ export class CupsReportController {
           status: {
             not: "CANCELLED",
           },
-          createdAt: {
+          businessDate: {
             gte: start,
             lt: end,
           },
         },
         select: {
-          createdAt: true,
+          businessDate: true,
           items: {
             select: {
               productId: true,
@@ -124,13 +123,6 @@ export class CupsReportController {
       }),
     ]);
 
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-
     const coffeeTotals = new Map<string, SaleRow>();
     const addonTotals = new Map<string, AddonSaleRow>();
 
@@ -142,16 +134,7 @@ export class CupsReportController {
     );
 
     for (const order of orders) {
-      const parts = formatter.formatToParts(order.createdAt);
-
-      const get = (type: string) =>
-        parts.find((part) => part.type === type)?.value ?? "";
-
-      const date = [
-        get("year"),
-        get("month"),
-        get("day"),
-      ].join("-");
+      const date = order.businessDate.toISOString().slice(0, 10);
 
       const period =
         month === undefined
