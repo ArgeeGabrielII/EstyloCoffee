@@ -11,6 +11,7 @@ const dto = {
 function setup(price: number | null = 12500) {
   const tx = {
     $executeRaw: jest.fn(),
+    storeHours: { findUnique: jest.fn().mockResolvedValue({ openingTime: "00:00", closingTime: "23:00", bufferMinutes: 60 }) },
     $queryRaw: jest.fn().mockResolvedValue([
       { day: new Date("2026-10-22T00:00:00.000Z"), number: 1 },
     ]),
