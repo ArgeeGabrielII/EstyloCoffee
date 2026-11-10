@@ -46,6 +46,7 @@ model User {
   createdAt    DateTime   @default(now())
   orders       Order[]
   auditLogs    AuditLog[]
+  finalizedDays BusinessDayClose[]
 }
 
 model Product {
@@ -142,4 +143,17 @@ model StoreHours {
   closingTime   String   @default("23:00")
   bufferMinutes Int      @default(60)
   updatedAt     DateTime @updatedAt
+}
+
+model BusinessDayClose {
+  businessDate     DateTime @id @db.Date
+  finalizedAt      DateTime @default(now())
+  finalizedBy      String
+  user             User     @relation(fields: [finalizedBy], references: [id])
+  orderCount       Int
+  paidOrderCount   Int
+  salesCentavos    Int
+  unpaidOrderCount Int
+  unfinishedCount  Int
+  // Manually finalized financial snapshot; automatic lock happens at rollover.
 }
