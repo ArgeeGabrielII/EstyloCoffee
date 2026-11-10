@@ -8,7 +8,8 @@ describe("store business-day rollover (Asia/Manila)", () => {
     expect(businessDayFor(time("2026-11-10", "18:59"), hours)).toBe("2026-11-10");
     expect(businessDayWindow(time("2026-11-10", "18:01"), hours).phase).toBe("REVIEW");
     expect(businessDayFor(time("2026-11-10", "19:00"), hours)).toBe("2026-11-11");
-    expect(businessDayWindow(time("2026-11-10", "19:00"), hours).phase).toBe("NORMAL");
+    expect(businessDayWindow(time("2026-11-10", "19:00"), hours).phase).toBe("CLOSED");
+    expect(businessDayWindow(time("2026-11-10", "12:00"), hours).phase).toBe("OPEN");
   });
   it("supports closing after midnight and rolls at 03:00", () => {
     const overnight = { openingTime: "20:00", closingTime: "02:00", bufferMinutes: 60 };
