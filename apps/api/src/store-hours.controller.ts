@@ -10,7 +10,7 @@ import { RolesGuard } from "./auth/roles.guard";
 import { Roles } from "./common/roles.decorator";
 import { AuthUser, CurrentUser } from "./common/current-user.decorator";
 import {
-  StoreHoursService, businessDateValue, businessDayFor, validateHours,
+  StoreHoursService, businessDateValue, businessDayFor, businessDayWindow, validateHours,
 } from "./store-hours.service";
 import { lockBusinessDay } from "./business-day-lock";
 
@@ -40,6 +40,7 @@ export class StoreHoursController {
     const window = await this.service.current();
     const day = date ?? window.businessDate;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(businessDateValue(day).getTime())
+        || businessDateValue(day).toISOString().slice(0, 10) !== day
         || day > window.businessDate) {
       throw new BadRequestException("Invalid or future business date");
     }
@@ -73,13 +74,13 @@ export class StoreHoursController {
       const settings = await tx.storeHours.findUnique({ where: { id: 1 } });
       if (!settings) throw new ConflictException("Store hours are not configured");
       const now = new Date();
-      const window = await this.service.current(now);
+      const window = businessDayWindow(now, settings);
       if (window.phase !== "REVIEW" || window.businessDate !== dto.businessDate) {
         throw new ConflictException("Financial finalization is permitted only during this business day's review window");
       }
       await lockBusinessDay(tx, dto.businessDate);
       const lockedAt = new Date();
-      const current = await this.service.current(lockedAt);
+      const current = businessDayWindow(lockedAt, settings);
       if (current.phase !== "REVIEW" || current.businessDate !== dto.businessDate) {
         throw new ConflictException("Review window has ended; financial records are already locked by rollover");
       }
