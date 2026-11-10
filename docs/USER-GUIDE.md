@@ -1,6 +1,6 @@
 # Estylo Coffee — Step-by-step User Guide
 
-**Version 1.0 • 10 November 2026 • Application baseline b0ca1dd**
+**Version 1.1 • 10 November 2026 • Application baseline 3b8c995 + pending overnight-preview enhancement**
 
 This guide covers the current UI and is based on code in the repository. For **illustrated screen maps**, refer to the separate downloadable **Estylo Coffee Illustrated User Guide (Word)**. Its pictures are **training illustrations**, not actual screenshots of the local production application.
 
@@ -21,7 +21,7 @@ The hostname must resolve within the shop network.
 3. ADMIN opens Dashboard, while CASHIER opens Cashier.
 4. Use **Sign out** when finished. Do not share account passwords.
 
-**Navigation:** Operations offers Dashboard, Cashier, Orders and Reports as authorized. Public Pages opens Onsite Ordering and Queue Display in new tabs. ADMIN sees Maintenance with Drinks & Add-ons, Payment Methods, Users and Audit Log.
+**Navigation:** Operations offers Dashboard, Cashier, Orders and Reports as authorized. Public Pages opens Onsite Ordering and Queue Display in new tabs. ADMIN sees Maintenance with Store Hours, Drinks & Add-ons, Payment Methods, Users and Audit Log.
 
 ## 2. Take a cashier order
 
@@ -72,12 +72,26 @@ No phone number or payment gateway is required on /onsite.
 ## 6. Set store hours and reconciliation buffer (ADMIN)
 
 1. Open **Maintenance → Store Hours**.
-2. Set **Opening time** and **Closing time** in Philippine Time (24-hour clock). Times may cross midnight.
-3. Set **End-of-day review buffer** (default **60 minutes**, configurable **0–360**).
-4. Select **Save Store Hours**. The page shows the active **Business Date**, **Closing Time**, **Automatic Rollover**, and whether the store is Open, Closed or in the Review window.
-5. At closing, **new cashier and onsite orders are blocked**. During the review window (after close, before rollover), use the **Review Dashboard**, **Review Orders**, and **Review Reports** links to reconcile payments, quantities, and unfinished orders. Existing orders may still progress through preparation, and payments remain confirmable until finalization/cutoff.
-6. The **End-of-day reconciliation** panel shows paid sales, unpaid and unfinished counts. Resolve all unpaid/unfinished orders, then enter **FINALIZE** and click the finalization button to capture an auditable financial snapshot and immediately lock that day's payments and voids. Admin-only. Do not finalize prematurely.
-7. Once closing + buffer is reached, prior-day financial records become read-only even if you did not press Finalize. The live Dashboard and today's Orders board start a new business day. The Reports page defaults to that business date while still allowing historical dates. Older unfinished orders remain accessible; recorded transactions are never deleted.
+2. Enter the recurring **Opening time** and **Closing time** in Philippine Time (24-hour clock). For an overnight shift, enter **14:00** for opening and **01:00** for closing. **01:00 is automatically interpreted as 1:00 AM the next calendar day.** Do not enter a separate closing date.
+3. Set **End-of-day review buffer** to **60** minutes for a 1:00–2:00 AM reconciliation window (configurable **0–360**).
+4. In the updated **Preview opening, closing, and reconciliation dates** panel, select **November 10, 2026** as the *preview business date*. Verify the illustrated timeline below. The date picker previews a recurring schedule; it **does not** make settings effective on that future date or schedule a one-time closing.
+5. Select **Save Store Hours**. The recurring opening/closing times take effect as soon as saved. The page shows the active **Business Date**, **Closing Time**, **Automatic Rollover**, and whether the store is Open, Closed, or in Review.
+6. At closing, **new cashier and onsite orders are blocked**. During the review window (after close, before rollover), use the **Review Dashboard**, **Review Orders**, and **Review Reports** links to reconcile payments, quantities, and unfinished orders. Existing orders may still progress through preparation, and payments remain confirmable until finalization/cutoff.
+7. The **End-of-day reconciliation** panel shows paid sales, unpaid and unfinished counts. Resolve all unpaid/unfinished orders, then enter **FINALIZE** and click the finalization button to capture an auditable financial snapshot and immediately lock that day's payments and voids. Admin-only. Do not finalize prematurely.
+8. Once closing + buffer is reached, prior-day financial records become read-only even if you did not press Finalize. The live Dashboard and today's Orders board start a new business day. The Reports page defaults to that business date while still allowing historical dates. Older unfinished orders remain accessible; recorded transactions are never deleted.
+
+### Overnight example: 10–11 November 2026
+
+| Event | Local date and time (Asia/Manila) | Business date |
+| --- | --- | --- |
+| Store opens | Tue, Nov 10 at **2:00 PM** | 2026-11-10 |
+| Still selling after midnight | Wed, Nov 11 at **12:30 AM** | 2026-11-10 |
+| Store closes / review begins | Wed, Nov 11 at **1:00 AM** | 2026-11-10 |
+| Admin cross-checks sales | Wed, Nov 11 at **1:00–1:59 AM** | 2026-11-10 |
+| Rollover / financial cutoff | Wed, Nov 11 at **2:00 AM** | 2026-11-11 |
+| Next opening | Wed, Nov 11 at **2:00 PM** | 2026-11-11 |
+
+**Date picker clarification:** The Daily Schedule settings are *recurring*; only times and review buffer are saved. The new date selector is named **Preview business date**. Use it to see how a chosen future business date crosses midnight; it does not schedule a new effective date. If you need a *future-effective change* to opening hours rather than a preview, that feature has not been implemented.
 
 **Important:** The API rejects new cashier and onsite orders outside opening hours. Store reconciliation is for checking existing orders, not accepting new sales. If an unpaid order survives the automatic cutoff, it stays visible but cannot be paid against the closed business day. Escalate to an administrator for a separate audited adjustment rather than reopening old sales. Changing settings does not rewrite past orders’ saved business dates; queue numbering restarts on the new business date. The review buffer cannot overlap the following day’s opening.
 
@@ -130,5 +144,10 @@ All reporting dates use Philippine time.
 | Onsite create fails | Admin checks active GUEST, ONSITE_ACTOR_USER_ID, API and menu |
 | Queue blank | Public queue shows active statuses only |
 | Historic order missing queue # | Older orders existed before daily queue migration |
+| Closing time appears earlier than opening | This is normal for overnight hours; 01:00 after 14:00 means the following calendar day |
+| Cannot select a future **closing** date | Select a **preview business date** to see the calculated calendar dates; no separate closing-date field is needed |
+| Need a future-effective change | Preview is not scheduling: saving Store Hours applies the recurring schedule immediately |
+| New order is rejected during reconciliation | New intake stops at closing; use 1:00–2:00 AM only to reconcile existing orders |
+| Old unpaid order cannot be confirmed after cutoff | Prior-day financial changes are locked; escalate through a separate audited adjustment process |
 
 **Safety:** Do not run development database reset, seed or integration tests on the live Windows production database. Routine software deployments follow the separate controlled Windows process described in README.md.
