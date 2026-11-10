@@ -60,13 +60,13 @@ export function StoreHoursPage() {
           <div><div className="text-secondary small">Closing time</div><strong>{ph(state.closingAt)}</strong></div>
           <div><div className="text-secondary small">Dashboard/Orders rollover</div><strong>{ph(state.rolloverAt)}</strong></div>
           <span className={`badge ${state.phase === "REVIEW" ? "text-bg-warning" : "text-bg-secondary"}`}>
-            {state.phase === "REVIEW" ? "End-of-day review window" : "Standard business window"}
+            {state.phase === "REVIEW" ? "End-of-day review window" : state.phase === "OPEN" ? "Store open" : "Store closed"}
           </span>
         </div>
         <p className="mt-3 mb-2">
           {state.phase === "REVIEW"
             ? "Store closing time has passed. The dashboard and today's order board still show the closing business day so the administrator can reconcile sales and payments."
-            : "The dashboard and today's order board are aligned to the business date shown above."}
+            : "The dashboard and today's order board are aligned to the business date shown above. Store hours do not by themselves block new orders."}
         </p>
         <div className="d-flex flex-wrap gap-2 mt-2">
           <Link to="/dashboard" className="btn btn-outline-secondary">Review Dashboard</Link>
@@ -102,6 +102,7 @@ export function StoreHoursPage() {
         after <strong>Closing time + Review buffer</strong>. All transactions and historical reports remain stored.
         Open unfinished orders remain visible under Previous Business Days. Queue numbers restart at the cutoff.
       </div>
+      <p className="text-secondary small">The automatic rollover changes visual reporting and queue numbering; it does not close the POS or reject orders outside opening hours.</p>
       <p className="text-secondary small">This setting uses one daily schedule, not separate hours by weekday. Changes apply to newly created orders and the live display; previously saved orders keep their original business dates. The review buffer must finish before the next day's opening.</p>
       <button type="submit" className="btn btn-estylo" disabled={busy || !openingTime || !closingTime}>
         {busy ? "Saving…" : "Save Store Hours"}
