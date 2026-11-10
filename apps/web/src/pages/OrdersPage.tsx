@@ -60,9 +60,9 @@ export function OrdersPage() {
   const { data: orders, error, loading, updatedAt } = useAutoRefresh<Order[]>("/queue/staff", [], revision);
   const { data: storeHours, error: hoursError } = useAutoRefresh<StoreHoursState | null>("/store-hours/current", null, 0, 15_000);
   const todayKey = storeHours?.businessDate ?? dateKey(now);
-  const todayOrders = orders.filter(order => order.businessDate?.slice(0, 10) === todayKey);
+  const todayOrders = orders.filter(order => order.businessDate.slice(0, 10) === todayKey);
   const previousPending = orders.filter(order =>
-    order.businessDate?.slice(0, 10) < todayKey && pendingStatuses.includes(order.status));
+    order.businessDate.slice(0, 10) !== todayKey && pendingStatuses.includes(order.status));
   const detailOrder = detailId ? orders.find(o => o.id === detailId) ?? null : null;
 
   useEffect(() => {
