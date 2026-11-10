@@ -13,7 +13,7 @@ export async function lockBusinessDay(tx: Database, day: string): Promise<void> 
 export async function assertFinancialDayOpen(
   tx: Database,
   day: string,
-  now = new Date(),
+  now?: Date,
 ): Promise<void> {
   await lockBusinessDay(tx, day);
   const closed = await tx.businessDayClose.findUnique({
@@ -23,7 +23,7 @@ export async function assertFinancialDayOpen(
     throw new ConflictException("This business day has been finalized. Financial changes are locked.");
   }
   const settings = (await tx.storeHours.findUnique({ where: { id: 1 } })) ?? DEFAULT_HOURS;
-  if (businessDayFor(now, settings) !== day) {
+  if (businessDayFor(now ?? new Date(), settings) !== day) {
     throw new ConflictException("This business day has passed the reconciliation cutoff. Financial changes are locked.");
   }
 }
