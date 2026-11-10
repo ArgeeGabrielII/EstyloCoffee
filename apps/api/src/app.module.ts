@@ -10,6 +10,8 @@ import { OnsiteController } from "./onsite.controller";
 import { CupsReportController } from "./cups-report.controller";
 import { PaymentMethodsController } from "./payment-methods.controller";
 import { MarketingDashboardController } from "./marketing-dashboard.controller";
+import { StoreHoursController } from "./store-hours.controller";
+import { StoreHoursService } from "./store-hours.service";
 
 @Module({
   imports: [PrismaModule, AuthModule],
@@ -22,7 +24,8 @@ import { MarketingDashboardController } from "./marketing-dashboard.controller";
     CupsReportController,
     PaymentMethodsController,
     MarketingDashboardController,
+    StoreHoursController,
   ],
-  providers: [CoffeeService],
+  providers: [CoffeeService, StoreHoursService],
 })
 export class AppModule {}
