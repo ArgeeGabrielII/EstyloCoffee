@@ -17,6 +17,7 @@ export type Status = "NEW" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED";
 export type Order = {
   id: string;
   queueNumber: number | null;
+  businessDate: string;
   customer: string;
   phone: string;
   address: string;
