@@ -16,6 +16,38 @@ describe("store business-day rollover (Asia/Manila)", () => {
     expect(businessDayFor(time("2026-11-11", "02:59"), overnight)).toBe("2026-11-10");
     expect(businessDayFor(time("2026-11-11", "03:00"), overnight)).toBe("2026-11-11");
   });
+  it("supports Estylo's 2 PM to 1 AM shift, 1-2 AM reconciliation", () => {
+    const schedule = { openingTime: "14:00", closingTime: "01:00", bufferMinutes: 60 };
+    expect(() => validateHours(schedule)).not.toThrow();
+
+    for (const [date, clock, businessDate, phase] of [
+      ["2026-11-10", "13:59", "2026-11-10", "CLOSED"],
+      ["2026-11-10", "14:00", "2026-11-10", "OPEN"],
+      ["2026-11-10", "23:59", "2026-11-10", "OPEN"],
+      ["2026-11-11", "00:00", "2026-11-10", "OPEN"],
+      ["2026-11-11", "00:59", "2026-11-10", "OPEN"],
+      ["2026-11-11", "01:00", "2026-11-10", "REVIEW"],
+      ["2026-11-11", "01:59", "2026-11-10", "REVIEW"],
+      ["2026-11-11", "02:00", "2026-11-11", "CLOSED"],
+      ["2026-11-11", "02:01", "2026-11-11", "CLOSED"],
+      ["2026-11-11", "13:59", "2026-11-11", "CLOSED"],
+      ["2026-11-11", "14:00", "2026-11-11", "OPEN"],
+    ] as const) {
+      const when = time(date, clock);
+      const result = businessDayWindow(when, schedule);
+      expect(result.businessDate).toBe(businessDate);
+      expect(result.phase).toBe(phase);
+      expect(businessDayFor(when, schedule)).toBe(businessDate);
+    }
+
+    const beforeRollover = businessDayWindow(time("2026-11-11", "01:59"), schedule);
+    expect(beforeRollover.closingAt).toBe("2026-11-10T17:00:00.000Z");
+    expect(beforeRollover.rolloverAt).toBe("2026-11-10T18:00:00.000Z");
+
+    const afterRollover = businessDayWindow(time("2026-11-11", "02:00"), schedule);
+    expect(afterRollover.closingAt).toBe("2026-11-11T17:00:00.000Z");
+    expect(afterRollover.rolloverAt).toBe("2026-11-11T18:00:00.000Z");
+  });
   it("defaults to midnight and has stable UTC-date storage", () => {
     const defaults = { openingTime: "00:00", closingTime: "23:00", bufferMinutes: 60 };
     expect(businessDayFor(time("2026-11-10", "23:59"), defaults)).toBe("2026-11-10");
