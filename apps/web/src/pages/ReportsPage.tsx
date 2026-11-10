@@ -196,6 +196,30 @@ function SalesReports() {
 
   const [breakdownError, setBreakdownError] =
     useState("");
+  const [currentBusinessDate, setCurrentBusinessDate] = useState(datePH);
+
+  useEffect(() => {
+    let active = true;
+    let priorBusinessDate = datePH();
+    async function refreshBusinessDate() {
+      try {
+        const current = await api<{ businessDate: string }>("/store-hours/current");
+        if (!active) return;
+        const priorYear = Number(priorBusinessDate.slice(0, 4));
+        const priorMonth = Number(priorBusinessDate.slice(5, 7));
+        setBreakdownDate(previous => previous === priorBusinessDate ? current.businessDate : previous);
+        setYear(previous => previous === priorYear ? Number(current.businessDate.slice(0, 4)) : previous);
+        setMonth(previous => previous === priorMonth ? Number(current.businessDate.slice(5, 7)) : previous);
+        setCurrentBusinessDate(current.businessDate);
+        priorBusinessDate = current.businessDate;
+      } catch {
+        // Keep historical reporting accessible even if the schedule endpoint is unavailable.
+      }
+    }
+    void refreshBusinessDate();
+    const timer = window.setInterval(() => void refreshBusinessDate(), 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
 
   // --------------------------------------------------
   // Load Daily / Monthly Charts
@@ -683,7 +707,7 @@ function SalesReports() {
         <div>
           <h1>Reports</h1>
           <p>
-            Coffee and add-on sales analytics ·
+            Coffee and add-on sales analytics by business date ·
             Philippine Time
           </p>
         </div>
@@ -785,9 +809,8 @@ function SalesReports() {
             type="button"
             className="btn btn-outline-secondary"
             onClick={() => {
-              const t = todayPH();
-              setYear(t.year);
-              setMonth(t.month);
+              setYear(Number(currentBusinessDate.slice(0, 4)));
+              setMonth(Number(currentBusinessDate.slice(5, 7)));
             }}
           >
             Current Period
@@ -848,7 +871,7 @@ function SalesReports() {
               className="form-label fw-semibold"
               htmlFor="breakdown-date"
             >
-              Sales Date
+              Business Date
             </label>
 
             {/* No wrapping: Today stays beside date */}
@@ -879,10 +902,10 @@ function SalesReports() {
                 type="button"
                 className="btn btn-outline-secondary flex-shrink-0"
                 onClick={() =>
-                  setBreakdownDate(datePH())
+                  setBreakdownDate(currentBusinessDate)
                 }
               >
-                Today
+                Current Business Day
               </button>
             </div>
           </div>
