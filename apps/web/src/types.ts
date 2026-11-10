@@ -60,6 +60,7 @@ export type StoreHoursState = {
   startedAt: string;
   closingAt: string;
   rolloverAt: string;
-  phase: "NORMAL" | "REVIEW";
+  phase: "OPEN" | "CLOSED" | "REVIEW";
+  isOpen: boolean;
   timeZone: "Asia/Manila";
 };
