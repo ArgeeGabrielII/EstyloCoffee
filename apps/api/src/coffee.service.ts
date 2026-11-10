@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "./prisma/prisma.service";
 import { OrderDto, UpdateOrderDto } from "./coffee.dto";
 import { transition } from "./order-rules";
+import { businessDateValue, businessDayFor, DEFAULT_HOURS } from "./store-hours.service";
 
 @Injectable()
 export class CoffeeService {
@@ -73,9 +74,13 @@ export class CoffeeService {
       if (totalCentavos > 2000000000) {
         throw new BadRequestException("Order exceeds maximum supported total");
       }
+      // Freeze the operational business date on the order. Future schedule edits
+      // must not rewrite historical order/report periods.
+      const settings = (await tx.storeHours.findUnique({ where: { id: 1 } })) ?? DEFAULT_HOURS;
+      const businessDate = businessDayFor(new Date(), settings);
       const counters = await tx.$queryRaw<Array<{ day: Date; number: number }>>`
         INSERT INTO "DailyQueueCounter" ("day", "lastNumber")
-        VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date, 1)
+        VALUES (CAST(${businessDate} AS DATE), 1)
         ON CONFLICT ("day") DO UPDATE
           SET "lastNumber" = "DailyQueueCounter"."lastNumber" + 1
         RETURNING "day", "lastNumber" AS "number"
@@ -86,6 +91,7 @@ export class CoffeeService {
           requestKey: key,
           customer: dto.customer.trim() || "Walk-in Customer",
           queueDate: queue.day,
+          businessDate: businessDateValue(businessDate),
           queueNumber: queue.number,
           phone: dto.phone,
           address: dto.address,
