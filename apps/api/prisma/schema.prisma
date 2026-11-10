@@ -62,6 +62,7 @@ model Order {
   customer      String
   queueNumber   Int?
   queueDate     DateTime?     @db.Date
+  businessDate  DateTime      @db.Date
   phone         String        @default("")
   address       String        @default("")
   fulfillment   Fulfillment
@@ -80,6 +81,7 @@ model Order {
 
   @@unique([queueDate, queueNumber])
   @@index([createdAt])
+  @@index([businessDate])
   @@index([status])
 }
 
