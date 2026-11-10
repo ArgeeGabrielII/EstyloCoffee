@@ -135,7 +135,7 @@ async function request(path, method = "GET", data, extra = {}) {
   assert.equal(publicBoard.status, 200);
   const boardOrder = publicBoard.body.find((row) => row.id === id);
   assert(boardOrder, "New order should appear in public queue");
-  assert.match(boardOrder.businessDate, /^\\d{4}-\\d{2}-\\d{2}T/);
+  assert.match(boardOrder.businessDate, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(
     (await request("/orders/" + id, "PATCH", { status: "COMPLETED" })).status,
     409,
