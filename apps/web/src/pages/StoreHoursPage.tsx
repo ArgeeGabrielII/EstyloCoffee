@@ -1,11 +1,23 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
+import { api, money } from "../api/client";
 import type { StoreHoursState } from "../types";
 
 const ph = (value: string) => new Date(value).toLocaleString("en-PH", {
   timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
 });
+type Reconciliation = {
+  businessDate: string;
+  phase: string;
+  locked: boolean;
+  lockReason: string;
+  orderCount: number;
+  paidOrderCount: number;
+  salesCentavos: number;
+  unpaidOrderCount: number;
+  unfinishedCount: number;
+  snapshot: { finalizedAt: string; finalizedBy: string } | null;
+};
 export function StoreHoursPage() {
   const [state, setState] = useState<StoreHoursState | null>(null);
   const [openingTime, setOpeningTime] = useState("00:00");
@@ -14,6 +26,9 @@ export function StoreHoursPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [finalizing, setFinalizing] = useState(false);
   const initialized = useRef(false);
   useEffect(() => {
     let mounted = true;
@@ -22,6 +37,12 @@ export function StoreHoursPage() {
         const current = await api<StoreHoursState>("/store-hours/current");
         if (!mounted) return;
         setState(current);
+        try {
+          const summary = await api<Reconciliation>(`/store-hours/reconciliation?date=${current.businessDate}`);
+          if (mounted) setReconciliation(summary);
+        } catch (e) {
+          if (mounted) setError(e instanceof Error ? e.message : "Could not load reconciliation");
+        }
         if (!initialized.current) {
           setOpeningTime(current.openingTime);
           setClosingTime(current.closingTime);
@@ -34,6 +55,28 @@ export function StoreHoursPage() {
     const timer = window.setInterval(() => void refresh(), 15_000);
     return () => { mounted = false; window.clearInterval(timer); };
   }, []);
+  async function finalize(event: FormEvent) {
+    event.preventDefault();
+    if (!reconciliation || confirmation !== "FINALIZE" || finalizing) return;
+    setFinalizing(true); setError(""); setMessage("");
+    try {
+      await api("/store-hours/finalize", {
+        method: "POST",
+        body: JSON.stringify({
+          businessDate: reconciliation.businessDate,
+          confirmation: "FINALIZE",
+        }),
+      });
+      setReconciliation(await api<Reconciliation>(
+        `/store-hours/reconciliation?date=${reconciliation.businessDate}`,
+      ));
+      setConfirmation("");
+      setMessage("Business-day financial records finalized and locked. An audit entry was recorded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not finalize business day");
+    } finally { setFinalizing(false); }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError(""); setMessage("");
@@ -66,13 +109,52 @@ export function StoreHoursPage() {
         <p className="mt-3 mb-2">
           {state.phase === "REVIEW"
             ? "Store closing time has passed. The dashboard and today's order board still show the closing business day so the administrator can reconcile sales and payments."
-            : "The dashboard and today's order board are aligned to the business date shown above. Store hours do not by themselves block new orders."}
+            : "The dashboard and today's order board are aligned to the business date shown above. New orders are blocked outside operating hours."}
         </p>
         <div className="d-flex flex-wrap gap-2 mt-2">
           <Link to="/dashboard" className="btn btn-outline-secondary">Review Dashboard</Link>
           <Link to="/orders" className="btn btn-outline-secondary">Review Orders</Link>
           <Link to="/reports" className="btn btn-outline-secondary">Review Reports</Link>
         </div>
+      </>}
+    </div>
+    <div className="card-estylo mb-4">
+      <h2 className="h5">End-of-day reconciliation</h2>
+      {!reconciliation ? <p>Loading payment and order summary…</p> : <>
+        <div className="d-flex flex-wrap gap-3 mb-3">
+          <div><small className="d-block text-secondary">Orders</small><strong>{reconciliation.orderCount}</strong></div>
+          <div><small className="d-block text-secondary">Paid orders</small><strong>{reconciliation.paidOrderCount}</strong></div>
+          <div><small className="d-block text-secondary">Paid sales</small><strong>{money(reconciliation.salesCentavos)}</strong></div>
+          <div><small className="d-block text-secondary">Unpaid</small><strong>{reconciliation.unpaidOrderCount}</strong></div>
+          <div><small className="d-block text-secondary">Unfinished</small><strong>{reconciliation.unfinishedCount}</strong></div>
+        </div>
+        {reconciliation.locked ? (
+          <div className="alert alert-secondary" role="status">
+            <strong>Financial records locked.</strong> {reconciliation.lockReason === "MANUALLY_FINALIZED"
+              ? `Manually finalized on ${reconciliation.snapshot ? ph(reconciliation.snapshot.finalizedAt) : "a prior date"}.`
+              : "The scheduled rollover cutoff has passed."}
+            {" "}Payment changes and voids on this business date are blocked.
+          </div>
+        ) : reconciliation.phase === "REVIEW" ? (
+          <>
+            <p>Verify payments, status and totals before finalizing. Payment and void operations remain available until finalization or the scheduled cutoff.</p>
+            {reconciliation.unpaidOrderCount > 0 || reconciliation.unfinishedCount > 0 ? (
+              <div className="alert alert-warning">
+                Resolve unpaid and unfinished orders before manual finalization. The scheduled cutoff will still lock the day, with unresolved orders flagged for follow-up.
+              </div>
+            ) : <form onSubmit={finalize}>
+              <label className="form-label" htmlFor="finalize-confirm">Type FINALIZE to lock this day's financial records</label>
+              <div className="d-flex gap-2 flex-wrap">
+                <input id="finalize-confirm" value={confirmation} onChange={e => setConfirmation(e.target.value)}
+                  className="form-control" style={{ maxWidth: 250 }} autoComplete="off" />
+                <button type="submit" className="btn btn-danger" disabled={finalizing || confirmation !== "FINALIZE"}>
+                  {finalizing ? "Finalizing…" : `Finalize ${reconciliation.businessDate}`}
+                </button>
+              </div>
+              <small className="text-secondary">This is irreversible in the normal workflow. Only administrators can finalize.</small>
+            </form>}
+          </>
+        ) : <p>Manual finalization becomes available during the end-of-day review buffer (after closing, before rollover).</p>}
       </>}
     </div>
     <form className="card-estylo" onSubmit={save}>
@@ -102,9 +184,9 @@ export function StoreHoursPage() {
         after <strong>Closing time + Review buffer</strong>. All transactions and historical reports remain stored.
         Open unfinished orders remain visible under Previous Business Days. Queue numbers restart at the cutoff.
       </div>
-      <p className="text-secondary small">The automatic rollover changes visual reporting and queue numbering; it does not close the POS or reject orders outside opening hours.</p>
+      <p className="text-secondary small">Cashier and onsite new orders are rejected outside opening hours. The review buffer allows checking payments and orders, not new orders. At rollover, financial changes to the prior day are automatically locked, even without manual finalization; unresolved orders require a separate auditable correction process.</p>
       <p className="text-secondary small">This setting uses one daily schedule, not separate hours by weekday. Changes apply to newly created orders and the live display; previously saved orders keep their original business dates. The review buffer must finish before the next day's opening.</p>
-      <button type="submit" className="btn btn-estylo" disabled={busy || !openingTime || !closingTime}>
+      <button type="submit" className="btn btn-estylo" disabled={busy || state?.phase === "REVIEW" || !openingTime || !closingTime}>
         {busy ? "Saving…" : "Save Store Hours"}
       </button>
     </form>
