@@ -63,12 +63,18 @@ export function businessDayWindow(now: Date, settings: Hours) {
   const rolloverAt = dayCutoff(businessDate, settings, true);
   const startedAt = dayCutoff(priorDay, settings, true);
   const review = now >= closingAt && now < rolloverAt;
+  const localMinute = Math.floor(((now.getTime() + PH_OFFSET_MS) % DAY_MS) / 60000);
+  const opens = minutes(settings.openingTime);
+  const closes = minutes(settings.closingTime);
+  const isOpen = closes <= opens ? localMinute >= opens || localMinute < closes
+    : localMinute >= opens && localMinute < closes;
   return {
     businessDate,
     startedAt: startedAt.toISOString(),
     closingAt: closingAt.toISOString(),
     rolloverAt: rolloverAt.toISOString(),
-    phase: review ? "REVIEW" : "NORMAL",
+    phase: review ? "REVIEW" : isOpen ? "OPEN" : "CLOSED",
+    isOpen,
     ...settings,
     timeZone: "Asia/Manila",
   };
