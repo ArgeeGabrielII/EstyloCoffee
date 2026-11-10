@@ -32,7 +32,7 @@ export class QueueController {
       where: {
         OR: [
           { businessDate: currentDate },
-          { businessDate: { lt: currentDate }, status: { in: ["NEW", "PREPARING", "READY"] } },
+          { businessDate: { not: currentDate }, status: { in: ["NEW", "PREPARING", "READY"] } },
         ],
       },
       include: { items: { include: { addons: true } } },
