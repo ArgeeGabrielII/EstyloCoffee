@@ -51,3 +51,15 @@ export type Report = {
   open: number;
   statuses: { status: Status; _count: number }[];
 };
+
+export type StoreHoursState = {
+  openingTime: string;
+  closingTime: string;
+  bufferMinutes: number;
+  businessDate: string;
+  startedAt: string;
+  closingAt: string;
+  rolloverAt: string;
+  phase: "NORMAL" | "REVIEW";
+  timeZone: "Asia/Manila";
+};
