@@ -14,7 +14,7 @@ export class QueueController {
   publicQueue() {
     return this.p.order.findMany({
       where: { status: { in: ["NEW", "PREPARING", "READY"] } },
-      select: { id: true, customer: true, queueNumber: true, status: true },
+      select: { id: true, customer: true, queueNumber: true, businessDate: true, status: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
   }
