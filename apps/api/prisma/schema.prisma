@@ -135,3 +135,11 @@ model PaymentMethod {
   createdAt DateTime @default(now())
   orders Order[]
 }
+
+model StoreHours {
+  id            Int      @id @default(1)
+  openingTime   String   @default("00:00")
+  closingTime   String   @default("23:00")
+  bufferMinutes Int      @default(60)
+  updatedAt     DateTime @updatedAt
+}
