@@ -74,13 +74,17 @@ Onsite ordering requires an **active GUEST system account** whose ID is set as O
 
 ### Store Hours maintenance and business-day rollover (new feature)
 
-The admin-only **Maintenance → Store Hours** screen sets a recurring daily **Opening Time**, **Closing Time**, and a **Review Buffer** of 0–360 minutes (default: **60**). All times use Asia/Manila; overnight opening/closing is supported. Settings are validated so a shift plus review buffer does not overlap the next opening.
+The admin-only **Maintenance → Store Hours** screen sets a **recurring daily** Opening Time, Closing Time, and a Review Buffer of 0–360 minutes (default: **60**). All times use Asia/Manila; overnight opening/closing is supported. **No separate next-day closing date is required**: if closing time is earlier than or equal to opening time, the software calculates closing on the following calendar day. Settings are validated so a shift plus review buffer does not overlap the next opening.
+
+The updated **Preview opening, closing, and reconciliation dates** panel allows an admin to choose a **Preview business date**, including a future date, and inspect the actual local opening, closing and rollover timestamps. **This is a non-persistent preview, not a future-effective scheduling feature**: clicking **Save Store Hours** applies the recurring time settings immediately. Existing orders keep their stored business dates.
 
 At closing time the **REVIEW** phase begins: **cashier and public onsite new-order creation stops**, while the current Dashboard and Orders board remain on the closing business day for reconciliation. The UI displays a closed-state notice, and the API rejects out-of-hours orders with HTTP 409. Existing orders may still be prepared or completed according to their status, but new sales are blocked. At **Closing + Buffer**, they automatically roll over to the next business day. Payment confirmations and voids for the prior business date become **automatically read-only**, even if no administrator clicked Finalize. The report selector follows the active business date unless an admin is browsing history. A date-specific report can still be opened for any previous period, and older unfinished orders remain available on the order board.
 
 **Financial finalization:** During the REVIEW window, Maintenance → Store Hours shows order count, paid orders/sales, unpaid orders, and unfinished orders. An ADMIN may type **FINALIZE** to create a stored, audit-linked closing snapshot only when there are **no unpaid and no unfinished orders**. A manually finalized date is immediately financially locked. Financial writes to previous dates are rejected after automatic rollover even if no snapshot was created; incomplete orders stay visible but cannot be newly marked paid against the closed date. Reconciliation exceptions require a separate admin-supervised, audited adjustment process; there is no automatic refund or reopening of historical records. Do not leave orders unpaid past cutoff.
 
-Each newly created order has a stored **businessDate**. Queue numbering uses that same date and starts at 1 after rollover; **no orders, sales, or audit records are deleted**. The additive migration `20261110080000_store_hours_business_day` backfills older orders to the original Philippine calendar date so historical records are not lost or reclassified when settings change. Subsequent settings edits affect **new** orders and live display boundaries, not the stored historical business dates. Store hours show an Open/Closed state but do **not** automatically prevent cashier or onsite orders outside those hours.
+Each newly created order has a stored **businessDate**. Queue numbering uses that same date and starts at 1 after rollover; **no orders, sales, or audit records are deleted**. The additive migration `20261110080000_store_hours_business_day` backfills older orders to the original Philippine calendar date so historical records are not lost or reclassified when settings change. Subsequent settings edits affect **new** orders and live display boundaries, not the stored historical business dates. Store hours show an Open/Closed state, and the API **blocks new cashier and onsite orders outside opening hours**.
+
+**Example overnight schedule:** Set opening **14:00** (Tuesday 10 Nov), closing **01:00** (Wednesday 11 Nov, automatically treated as the next calendar day), and review buffer **60** minutes. The store accepts new orders until 1:00 AM on 11 Nov, reconciliation runs 1:00–2:00 AM, and the live business date and prior-day financial lock roll over at **2:00 AM**. A selected preview date is for illustration only; the repeating schedule takes effect when saved.
 
 **Deployment warning:** This feature adds two additive Prisma migrations (the seventh for Store Hours and business dates, and the eighth for auditable business-day close snapshots). It is **not installed on the production Windows machine** merely by merging this PR. The locally installed release updater is pinned to the previously deployed commit `b0ca1dd` and the prior three migration files. A fresh verified backup, reviewed migration SQL, a newly approved deployment script and successful smoke tests are mandatory before updating production.
 
@@ -217,7 +221,7 @@ The GitHub workflow tests an **isolated PostgreSQL** database and runs dependenc
 
 Integration tests require **INTEGRATION_TEST_DATABASE=true** and an explicitly **disposable test DB**. Never run them against production.
 
-**Validated application baseline:** [b0ca1dd GitHub Actions](https://github.com/ArgeeGabrielII/EstyloCoffee/actions/runs/42618052591).
+**Validated application baseline for this repository:** [3b8c995 GitHub Actions](https://github.com/ArgeeGabrielII/EstyloCoffee/actions/runs/42737207514). The overnight date-preview UI is a subsequent change pending its own PR review.
 
 ## Safety and limitations
 
@@ -225,4 +229,4 @@ Integration tests require **INTEGRATION_TEST_DATABASE=true** and an explicitly *
 - SMS orders are **staff-entered**, not automatically collected from incoming texts.
 - The public onsite page is intentionally unauthenticated and uses a separate backend GUEST identity.
 - Protect production secrets, backup archives and the Windows host. Do not put personal account IDs or credentials in public documentation.
-- This README documents the source at b0ca1dd and the production configuration confirmed by its operator, not an independent remote inspection of the private shop laptop.
+- This README documents the repository's Store Hours behavior and the production configuration reported by its operator; it is not an independent remote inspection of the private shop laptop. The Windows production installation still runs the older b0ca1dd application release until separately and safely deployed.

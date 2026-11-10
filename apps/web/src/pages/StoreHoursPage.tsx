@@ -6,6 +6,35 @@ import type { StoreHoursState } from "../types";
 const ph = (value: string) => new Date(value).toLocaleString("en-PH", {
   timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
 });
+// The store schedule repeats daily. Dates selected here are for display only,
+// not an effective-date rule or a historical order edit.
+function previewSchedule(businessDate: string, opening: string, closing: string, buffer: number) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(opening) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(closing) ||
+      !Number.isInteger(buffer) || buffer < 0 || buffer > 360) return null;
+  const clockMinutes = (value: string) => {
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+  const opens = clockMinutes(opening);
+  const closes = clockMinutes(closing);
+  const closesNextDay = closes <= opens;
+  const duration = (closes - opens + 1440) % 1440 || 1440;
+  if (duration + buffer > 1440) return null;
+  const dayStart = Date.parse(businessDate + "T00:00:00+08:00");
+  if (!Number.isFinite(dayStart) ||
+      new Date(dayStart + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) !== businessDate) return null;
+  const at = (offsetMinutes: number) => new Date(dayStart + offsetMinutes * 60000).toISOString();
+  const closeMinute = closes + (closesNextDay ? 1440 : 0);
+  return {
+    opensAt: at(opens),
+    closesAt: at(closeMinute),
+    rolloverAt: at(closeMinute + buffer),
+    closesNextDay,
+  };
+}
+
 type Reconciliation = {
   businessDate: string;
   phase: string;
@@ -23,6 +52,7 @@ export function StoreHoursPage() {
   const [openingTime, setOpeningTime] = useState("00:00");
   const [closingTime, setClosingTime] = useState("23:00");
   const [bufferMinutes, setBufferMinutes] = useState(60);
+  const [previewDate, setPreviewDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -30,6 +60,8 @@ export function StoreHoursPage() {
   const [confirmation, setConfirmation] = useState("");
   const [finalizing, setFinalizing] = useState(false);
   const initialized = useRef(false);
+  const dateToPreview = previewDate || state?.businessDate || "";
+  const preview = previewSchedule(dateToPreview, openingTime, closingTime, bufferMinutes);
   useEffect(() => {
     let mounted = true;
     async function refresh() {
@@ -167,9 +199,10 @@ export function StoreHoursPage() {
             onChange={e => setOpeningTime(e.target.value)} />
         </div>
         <div className="col-md-4">
-          <label htmlFor="store-closes" className="form-label">Closing time (PH)</label>
+          <label htmlFor="store-closes" className="form-label">Closing time (PH) {preview?.closesNextDay ? "(next calendar day)" : "(same calendar day)"}</label>
           <input id="store-closes" type="time" required className="form-control" value={closingTime}
             onChange={e => setClosingTime(e.target.value)} />
+          <div className="form-text">A time earlier than or equal to opening means the next day.</div>
         </div>
         <div className="col-md-4">
           <label htmlFor="review-buffer" className="form-label">End-of-day review buffer (minutes)</label>
@@ -177,6 +210,32 @@ export function StoreHoursPage() {
             value={bufferMinutes} onChange={e => setBufferMinutes(Number(e.target.value))} />
           <div className="form-text">Default: 60 minutes. Allowed: 0–360 minutes.</div>
         </div>
+      </div>
+      <div className="border rounded p-3 my-3" aria-label="Operating-hours date preview">
+        <h3 className="h6 fw-bold mb-2">Preview opening, closing, and reconciliation dates</h3>
+        <p className="small text-secondary mb-3">
+          This is a recurring daily schedule. Choose a business date to see its exact
+          times and calendar dates. <strong>The preview date does not schedule
+          future activation or modify saved order dates.</strong>
+        </p>
+        <div className="d-flex flex-wrap align-items-end gap-2 mb-3">
+          <div>
+            <label htmlFor="store-preview-date" className="form-label">Preview business date</label>
+            <input id="store-preview-date" type="date" className="form-control"
+              value={dateToPreview} onChange={e => setPreviewDate(e.target.value)} />
+          </div>
+          {state && <button type="button" className="btn btn-outline-secondary"
+            onClick={() => setPreviewDate(state.businessDate)}>Use current business date</button>}
+        </div>
+        {preview ? <div className="d-flex flex-wrap gap-4" aria-live="polite">
+          <div><small className="d-block text-secondary">Opens</small><strong>{ph(preview.opensAt)}</strong></div>
+          <div><small className="d-block text-secondary">Closes {preview.closesNextDay ? "(next day)" : ""}</small>
+            <strong>{ph(preview.closesAt)}</strong></div>
+          <div><small className="d-block text-secondary">Reconciliation ends / display rollover</small>
+            <strong>{ph(preview.rolloverAt)}</strong></div>
+        </div> : <p className="text-danger small mb-0" role="status">
+          Enter valid times, a valid business date, and a review buffer that ends before the next opening.
+        </p>}
       </div>
       <div className="alert alert-info my-3">
         <strong>Automatic rollover — no data deletion.</strong>
