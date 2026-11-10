@@ -69,7 +69,18 @@ Older pending orders are shown in a separate section. The public queue displays 
 
 No phone number or payment gateway is required on /onsite.
 
-## 6. Drinks and add-ons (ADMIN)
+## 6. Set store hours and reconciliation buffer (ADMIN)
+
+1. Open **Maintenance → Store Hours**.
+2. Set **Opening time** and **Closing time** in Philippine Time (24-hour clock). Times may cross midnight.
+3. Set **End-of-day review buffer** (default **60 minutes**, configurable **0–360**).
+4. Select **Save Store Hours**. The page shows the active **Business Date**, **Closing Time**, **Automatic Rollover**, and whether the store is Open, Closed or in the Review window.
+5. During the review window (after close, before rollover), use the **Review Dashboard**, **Review Orders**, and **Review Reports** links to reconcile payments, quantities, and unfinished orders.
+6. Once closing + buffer is reached, the live Dashboard and today’s Orders board start a new business day. The Reports page defaults to that business date while still allowing historical dates. Older unfinished orders remain accessible; recorded transactions are never deleted.
+
+**Important:** The schedule is for business-day grouping and display rollover. It does not automatically reject cashier or onsite orders outside opening hours. Changing settings does not rewrite past orders’ saved business dates; queue numbering restarts on the new business date. The review buffer cannot overlap the following day’s opening.
+
+## 7. Drinks and add-ons (ADMIN)
 
 1. Open **Maintenance → Drinks & Add-ons**.
 2. Choose **Drinks Maintenance** or **Add-On Maintenance**.
@@ -79,7 +90,7 @@ No phone number or payment gateway is required on /onsite.
 
 Historic orders keep their original price snapshots. Changing today's menu does not rewrite prior order amounts.
 
-## 7. Payment methods (ADMIN)
+## 8. Payment methods (ADMIN)
 
 1. Open **Maintenance → Payment Methods**.
 2. Under **Add Payment Method**, enter the name and select **Add Method**.
@@ -88,7 +99,7 @@ Historic orders keep their original price snapshots. Changing today's menu does 
 
 The migration initially creates Cash, Bank Transfer and GCash.
 
-## 8. Users and onsite system account (ADMIN)
+## 9. Users and onsite system account (ADMIN)
 
 1. Open **Maintenance → Users**.
 2. Under **Create User**, enter Username, Display Name, Password (**12+ characters**) and Role.
@@ -99,15 +110,15 @@ The migration initially creates Cash, Bank Transfer and GCash.
 
 GUEST is an attribution identity, **not a staff login**.
 
-## 9. Reports, dashboard, and audit (ADMIN)
+## 10. Reports, dashboard, and audit (ADMIN)
 
-- **Dashboard:** Today's Paid Sales, Paid Orders, Open Orders and status visuals. Refreshes automatically.
-- **Reports:** Choose **Daily** or **Monthly**, then Month and Year; use **Previous**, **Next** or **Current Period**. Review cups, sales, averages and coffee/add-on breakdowns.
+- **Dashboard:** Current business-day Paid Sales, Paid Orders, Open Orders and status visuals. Refreshes automatically.
+- **Reports:** Choose **Daily** or **Monthly**, then Month and Year; use **Previous**, **Next** or **Current Period**. Use **Current Business Day** for the daily breakdown. Historical reports remain available.
 - **Audit Log:** Use **Search** / **Clear** and **First / Previous / Next / Last** pagination (30 records per page).
 
 All reporting dates use Philippine time.
 
-## 10. Common problems
+## 11. Common problems
 
 | Symptom | First action |
 | --- | --- |
