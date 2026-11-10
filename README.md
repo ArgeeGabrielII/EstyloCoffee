@@ -82,7 +82,7 @@ At closing time the **REVIEW** phase begins: **cashier and public onsite new-ord
 
 Each newly created order has a stored **businessDate**. Queue numbering uses that same date and starts at 1 after rollover; **no orders, sales, or audit records are deleted**. The additive migration `20261110080000_store_hours_business_day` backfills older orders to the original Philippine calendar date so historical records are not lost or reclassified when settings change. Subsequent settings edits affect **new** orders and live display boundaries, not the stored historical business dates. Store hours show an Open/Closed state but do **not** automatically prevent cashier or onsite orders outside those hours.
 
-**Deployment warning:** This feature adds a seventh Prisma migration. It is **not installed on the production Windows machine** merely by merging this PR. The locally installed release updater is pinned to the previously deployed commit `b0ca1dd` and the prior three migration files. A fresh verified backup, reviewed migration SQL, a newly approved deployment script and successful smoke tests are mandatory before updating production.
+**Deployment warning:** This feature adds two additive Prisma migrations (the seventh for Store Hours and business dates, and the eighth for auditable business-day close snapshots). It is **not installed on the production Windows machine** merely by merging this PR. The locally installed release updater is pinned to the previously deployed commit `b0ca1dd` and the prior three migration files. A fresh verified backup, reviewed migration SQL, a newly approved deployment script and successful smoke tests are mandatory before updating production.
 
 ### Admin maintenance and reports
 
