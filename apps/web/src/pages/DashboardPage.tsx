@@ -4,6 +4,8 @@ import type { Report } from "../types";
 
 type MarketingMetrics = {
   asOf: string;
+  businessDate: string;
+  rolloverAt: string;
   todaySalesCentavos: number;
   yesterdayComparableCentavos: number;
   growthPercent: number | null;
@@ -13,17 +15,6 @@ type MarketingMetrics = {
   comparison: string;
   hourBasis: string;
 };
-
-function todayStartPH() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const get = (type: string) => parts.find(p => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}T00:00:00+08:00`;
-}
 
 function hourLabel(hour: number | null) {
   if (hour === null) return "No sales yet";
@@ -43,9 +34,8 @@ export function DashboardPage() {
     async function load() {
       setLoading(true);
       try {
-        const from = new Date(todayStartPH()).toISOString();
         const [summary, metrics] = await Promise.all([
-          api<Report>(`/reports?from=${encodeURIComponent(from)}`),
+          api<Report>("/reports?businessDay=current"),
           api<MarketingMetrics>("/reports/marketing-dashboard"),
         ]);
         if (active) {
@@ -77,7 +67,8 @@ export function DashboardPage() {
       <div className="page-title">
         <div>
           <h1>Dashboard</h1>
-          <p>Today at Estylo Coffee · Philippine Time</p>
+          <p>Business day {marketing?.businessDate ?? "…"} · Philippine Time</p>
+          {marketing?.rolloverAt && <p className="small text-secondary">Automatic rollover: {new Date(marketing.rolloverAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}</p>}
         </div>
       </div>
 
@@ -88,7 +79,7 @@ export function DashboardPage() {
         <div className="card-estylo">
           <div className="metric-label">Orders</div>
           <div className="metric-value">{report?.count ?? "—"}</div>
-          <small className="text-secondary">All orders created today</small>
+          <small className="text-secondary">All orders in the current business day</small>
         </div>
         <div className="card-estylo">
           <div className="metric-label">Paid Sales</div>
@@ -114,7 +105,7 @@ export function DashboardPage() {
             {marketing ? growthText : "—"}
           </div>
           <small className="d-block text-secondary">
-            Today vs. yesterday at the same time
+            Current vs. previous business day at the same elapsed time
           </small>
           {marketing && (
             <small className="d-block text-secondary mt-2">
@@ -131,7 +122,7 @@ export function DashboardPage() {
             {marketing ? hourLabel(marketing.peakHour) : "—"}
           </div>
           <small className="text-secondary">
-            {marketing ? `${marketing.peakOrderCount} paid order${marketing.peakOrderCount === 1 ? "" : "s"} during this hour today` : "Most paid orders in a one-hour slot"}
+            {marketing ? `${marketing.peakOrderCount} paid order${marketing.peakOrderCount === 1 ? "" : "s"} during this hour this business day` : "Most paid orders in a one-hour slot"}
           </small>
         </div>
       </div>
@@ -145,7 +136,7 @@ export function DashboardPage() {
               <strong>{s._count}</strong>
             </div>
           ))
-          : <p className="text-secondary mb-0">No orders today.</p>}
+          : <p className="text-secondary mb-0">No orders in this business day.</p>}
       </div>
       <p className="small text-secondary mt-3">
         Sales Growth uses paid, non-cancelled orders created during matching elapsed
